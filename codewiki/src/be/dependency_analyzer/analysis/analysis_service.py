@@ -320,7 +320,7 @@ class AnalysisService:
 
     def _get_supported_languages(self) -> List[str]:
         """Get list of currently supported languages for analysis."""
-        return ["python", "javascript", "typescript", "java", "csharp", "c", "cpp", "php"]
+        return ["python", "javascript", "typescript", "java", "csharp", "c", "cpp", "php", "go"]
 
     def _cleanup_repository(self, temp_dir: str):
         """Clean up cloned repository."""

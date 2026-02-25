@@ -9,6 +9,7 @@ import re
 
 from codewiki.src.be.dependency_analyzer.analysis.analysis_service import AnalysisService
 from codewiki.src.be.dependency_analyzer.models.core import Node
+from codewiki.src.be.dependency_analyzer.analyzers.go import analyze_go_file
 
 
 logger = logging.getLogger(__name__)
