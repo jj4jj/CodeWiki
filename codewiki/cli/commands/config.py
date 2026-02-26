@@ -341,9 +341,11 @@ def config_show(output_json: bool):
             
             click.secho("Credentials", fg="cyan", bold=True)
             if api_key:
-                # Show source of the api key
+                # Show source using the same priority as load()
                 if os.environ.get(ENV_API_KEY):
                     source = "env var (CODEWIKI_API_KEY)"
+                elif config and getattr(config, 'api_key', None):
+                    source = "config file (~/.codewiki/config.json)"
                 elif manager.keyring_available:
                     source = "system keychain"
                 else:
@@ -570,13 +572,28 @@ def config_validate(quick: bool, verbose: bool):
         
         # Step 5: API connectivity test (unless --quick)
         if not quick:
+            click.echo("  Testing API connectivity... ", nl=False)
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=api_key, base_url=config.base_url)
-                response = client.models.list()
+                # Use a minimal chat completion instead of models.list() because
+                # many providers don't implement the /models endpoint.
+                client.chat.completions.create(
+                    model=config.main_model,
+                    messages=[{"role": "user", "content": "hi"}],
+                    max_tokens=1,
+                )
                 click.secho("✓ API connectivity test successful", fg="green")
             except Exception as e:
-                click.secho("✗ API connectivity test failed", fg="red")
+                err_msg = str(e)
+                # Shorten very long openai error bodies
+                if len(err_msg) > 300:
+                    err_msg = err_msg[:300] + "…"
+                click.secho("✗ failed", fg="red")
+                click.secho(f"  Error: {err_msg}", fg="red")
+                click.echo()
+                click.echo("  Tip: use --quick to skip the connectivity test if")
+                click.echo("       you trust your credentials are correct.")
                 sys.exit(EXIT_CONFIG_ERROR)
         
         # Success

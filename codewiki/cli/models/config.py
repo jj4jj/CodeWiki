@@ -205,10 +205,10 @@ class Configuration:
     def is_complete(self) -> bool:
         """Check if all required fields are set."""
         return bool(
-            self.base_url and 
-            self.main_model and 
-            self.cluster_model and
-            self.fallback_model
+            self.base_url and
+            self.main_model and
+            self.cluster_model
+            # fallback_model is optional — defaults to main_model at runtime
         )
     
     def to_backend_config(self, repo_path: str, output_dir: str, api_key: str, runtime_instructions: AgentInstructions = None):

@@ -94,7 +94,19 @@ class ConfigManager:
             data = json.loads(content)
             self._config = Configuration.from_dict(data)
 
-            # Attempt to load API key from keyring (may be None if unavailable)
+            # ── API key resolution (highest → lowest priority) ──────────────
+            # 1. Environment variable (always wins)
+            env_key = os.environ.get(ENV_API_KEY)
+            if env_key:
+                self._api_key = env_key
+                return True
+
+            # 2. Explicit api_key field in config.json (user edited the file)
+            if self._config.api_key:
+                self._api_key = self._config.api_key
+                return True
+
+            # 3. System keychain (set via `codewiki config set`)
             if self._keyring_available:
                 try:
                     keyring_key = keyring.get_password(KEYRING_SERVICE, KEYRING_API_KEY_ACCOUNT)
