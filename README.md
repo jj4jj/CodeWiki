@@ -140,6 +140,83 @@ codewiki generate --verbose
 codewiki generate --create-branch --github-pages --verbose
 ```
 
+### Viewing Documentation on the Web
+
+CodeWiki generates Markdown files. Here are the recommended ways to view them as a web wiki:
+
+#### Option 1 — Built-in HTML Viewer (quickest)
+
+Add `--github-pages` when generating to get a self-contained `index.html` that renders the wiki in browser:
+
+```bash
+codewiki generate --github-pages
+# Open docs/codewiki/index.html in your browser
+```
+
+#### Option 2 — GitHub Pages (zero config hosting)
+
+```bash
+# 1. Generate with HTML viewer
+codewiki generate --github-pages --create-branch
+
+# 2. Push to GitHub
+git push origin docs/codewiki-<timestamp>
+
+# 3. In repo Settings → Pages → select the branch + /docs/codewiki folder
+# Your wiki will be live at: https://<org>.github.io/<repo>/
+```
+
+#### Option 3 — MkDocs (polished local / hosted site)
+
+```bash
+pip install mkdocs mkdocs-material
+
+# Create minimal mkdocs.yml at project root
+cat > mkdocs.yml << 'EOF'
+site_name: My Project Wiki
+docs_dir: docs/codewiki
+theme:
+  name: material
+EOF
+
+mkdocs serve          # Live preview at http://localhost:8000
+mkdocs gh-deploy      # Deploy to GitHub Pages automatically
+```
+
+#### Option 4 — Docsify (zero-build, just drop index.html)
+
+```bash
+# Create a minimal index.html in your docs directory
+cat > docs/codewiki/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Docs</title>
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/themes/vue.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>window.$docsify = { name: 'My Project', loadSidebar: false }</script>
+  <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
+</body>
+</html>
+EOF
+
+# Serve locally
+npx serve docs/codewiki
+# Or: python3 -m http.server 8000 --directory docs/codewiki
+```
+
+#### Option 5 — Quick local preview
+
+```bash
+# Python (built-in, no extra install)
+python3 -m http.server 8000 --directory docs/codewiki
+# Open http://localhost:8000
+
+# Or install grip for GitHub-flavored rendering
+pip install grip && grip docs/codewiki/overview.md
+```
+
 ### Customization Options
 
 CodeWiki supports customization for language-specific projects and documentation styles:

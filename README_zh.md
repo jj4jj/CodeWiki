@@ -117,6 +117,83 @@ codewiki config set \
 codewiki generate --github-pages --create-branch
 ```
 
+### 在网页中查看生成的文档
+
+CodeWiki 输出标准 Markdown 文件，以下是推荐的 Web 查看方式：
+
+#### 方式一 — 内置 HTML 查看器（最快）
+
+生成时加上 `--github-pages` 参数，会在输出目录生成一个自包含的 `index.html`：
+
+```bash
+codewiki generate --github-pages
+# 用浏览器打开 docs/codewiki/index.html 即可
+```
+
+#### 方式二 — GitHub Pages（零配置在线托管）
+
+```bash
+# 1. 生成带 HTML 查看器的文档
+codewiki generate --github-pages --create-branch
+
+# 2. 推送到 GitHub
+git push origin <分支名>
+
+# 3. 在 GitHub 仓库 Settings → Pages → 选择推送的分支 + /docs/codewiki 文件夹
+# 文档将发布到: https://<org>.github.io/<repo>/
+```
+
+#### 方式三 — MkDocs（精美本地/远程站点）
+
+```bash
+pip install mkdocs mkdocs-material
+
+# 在项目根目录创建 mkdocs.yml
+cat > mkdocs.yml << 'EOF'
+site_name: 我的项目 Wiki
+docs_dir: docs/codewiki
+theme:
+  name: material
+EOF
+
+mkdocs serve          # 本地预览，访问 http://localhost:8000
+mkdocs gh-deploy      # 自动部署到 GitHub Pages
+```
+
+#### 方式四 — Docsify（无构建，只需 index.html）
+
+```bash
+# 在文档目录下创建 index.html
+cat > docs/codewiki/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>文档</title>
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify/themes/vue.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>window.$docsify = { name: '我的项目', loadSidebar: false }</script>
+  <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
+</body>
+</html>
+EOF
+
+# 本地运行
+npx serve docs/codewiki
+# 或: python3 -m http.server 8000 --directory docs/codewiki
+```
+
+#### 方式五 — 快速本地预览
+
+```bash
+# Python 内置（无需安装）
+python3 -m http.server 8000 --directory docs/codewiki
+# 打开 http://localhost:8000
+
+# 或安装 grip（GitHub 风格渲染）
+pip install grip && grip docs/codewiki/overview.md
+```
+
 ### 测试及日志追踪相关
 如面临语法树解析报错、API 瓶颈挂起等行为，通过下方方式定位：
 ```bash
