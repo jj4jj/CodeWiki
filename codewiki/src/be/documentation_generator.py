@@ -1,9 +1,11 @@
 import logging
 import os
 import json
+import time
 from typing import Dict, List, Any
 from copy import deepcopy
 import traceback
+import sys
 
 # Configure logging and monitoring
 logger = logging.getLogger(__name__)
@@ -142,6 +144,14 @@ class DocumentationGenerator:
         
         # Get processing order (leaf modules first)
         processing_order = self.get_processing_order(first_module_tree)
+        total_modules = len(processing_order) + 1  # +1 for the final overview
+        done_count = [0]  # mutable counter
+
+        def _print_progress(symbol: str, label: str, name: str, elapsed: float = None):
+            idx = done_count[0]
+            t = f" ({elapsed:.1f}s)" if elapsed is not None else ""
+            line = f"  [{idx}/{total_modules}] {symbol} [{label}] {name}{t}"
+            print(line, flush=True)
 
         
         # Process modules in dependency order
@@ -162,7 +172,22 @@ class DocumentationGenerator:
                     module_key = "/".join(module_path)
                     if module_key in processed_modules:
                         continue
-                    
+
+                    done_count[0] += 1
+                    label = "leaf" if self.is_leaf_module(module_info) else "parent"
+
+                    # Check if this module is already done (checkpoint resume)
+                    docs_path = os.path.join(working_dir, f"{module_name}.md")
+                    overview_path = os.path.join(working_dir, OVERVIEW_FILENAME)
+                    already_done = os.path.exists(docs_path) or os.path.exists(overview_path)
+                    if already_done:
+                        _print_progress("↩", "skip", module_name)
+                        processed_modules.add(module_key)
+                        continue
+
+                    _print_progress("▶", label, module_name)
+                    t0 = time.time()
+
                     # Process the module
                     if self.is_leaf_module(module_info):
                         logger.info(f"📄 Processing leaf module: {module_key}")
@@ -174,19 +199,26 @@ class DocumentationGenerator:
                         final_module_tree = await self.generate_parent_module_docs(
                             module_path, working_dir
                         )
-                    
+
+                    elapsed = time.time() - t0
+                    _print_progress("✓", label, module_name, elapsed)
                     processed_modules.add(module_key)
                     
                 except Exception as e:
                     logger.error(f"Failed to process module {module_key}: {str(e)}")
                     logger.error(f"Traceback: {traceback.format_exc()}")
+                    _print_progress("✗", "error", f"{module_name}: {str(e)[:60]}")
                     continue
 
             # Generate repo overview
+            done_count[0] += 1
+            _print_progress("▶", "overview", "repository overview")
+            t0 = time.time()
             logger.info(f"📚 Generating repository overview")
             final_module_tree = await self.generate_parent_module_docs(
                 [], working_dir
             )
+            _print_progress("✓", "overview", "repository overview", time.time() - t0)
         else:
             logger.info(f"Processing whole repo because repo can fit in the context window")
             repo_name = os.path.basename(os.path.normpath(self.config.repo_path))

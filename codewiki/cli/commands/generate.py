@@ -285,14 +285,39 @@ def generate_command(
         
         logger.success(f"Output directory: {output_dir}")
         
-        # Check for existing documentation
+        # Check for existing documentation → offer resume/restart/cancel
         if output_dir.exists() and list(output_dir.glob("*.md")):
-            if not click.confirm(
-                f"\n{output_dir} already contains documentation. Overwrite?",
-                default=True
-            ):
+            done_md = list(output_dir.glob("*.md"))
+            click.echo()
+            click.secho(
+                f"  {output_dir} already contains {len(done_md)} documentation file(s).",
+                fg="yellow"
+            )
+            click.echo("  Choose an action:")
+            click.echo("    [r] Resume  — skip already-generated files, continue from last checkpoint (default)")
+            click.echo("    [s] Restart — delete existing docs and regenerate everything from scratch")
+            click.echo("    [c] Cancel  — exit without changes")
+            choice = click.prompt(
+                "  Action",
+                default="r",
+                type=click.Choice(["r", "s", "c"], case_sensitive=False),
+                show_choices=False,
+            ).lower()
+            if choice == "c":
                 logger.info("Generation cancelled by user.")
                 sys.exit(EXIT_SUCCESS)
+            elif choice == "s":
+                import shutil
+                # Delete .md files but keep first_module_tree.json to skip clustering
+                for f in done_md:
+                    f.unlink()
+                click.secho(f"  Deleted {len(done_md)} existing doc file(s). Starting fresh.", fg="red")
+            else:  # resume
+                click.secho(
+                    f"  Resuming — {len(done_md)} file(s) already done will be skipped.",
+                    fg="green"
+                )
+            click.echo()
         
         # Git branch creation (if requested)
         branch_name = None
