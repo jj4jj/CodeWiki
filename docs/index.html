@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,25 +16,25 @@
             --hover-color: #f8fafc;
             --code-bg: #f8fafc;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             color: var(--text-color);
             background-color: #ffffff;
         }
-        
+
         .container {
             display: flex;
             min-height: 100vh;
         }
-        
+
         .sidebar {
             width: 320px;
             background-color: var(--secondary-color);
@@ -43,14 +44,14 @@
             position: fixed;
             height: 100vh;
         }
-        
+
         .content {
             flex: 1;
             margin-left: 320px;
             padding: 40px 60px;
             max-width: calc(100% - 320px);
         }
-        
+
         .logo {
             font-size: 20px;
             font-weight: bold;
@@ -60,7 +61,7 @@
             align-items: center;
             gap: 8px;
         }
-        
+
         .repo-link {
             display: inline-flex;
             align-items: center;
@@ -76,12 +77,12 @@
             margin-bottom: 20px;
             border: 1px solid var(--border-color);
         }
-        
+
         .repo-link:hover {
             background: var(--hover-color);
             border-color: var(--primary-color);
         }
-        
+
         .repo-info {
             margin: 20px 0;
             padding: 15px;
@@ -89,7 +90,7 @@
             border-radius: 8px;
             border: 1px solid var(--border-color);
         }
-        
+
         .repo-info h4 {
             margin: 0 0 10px 0;
             font-size: 12px;
@@ -97,24 +98,24 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        
+
         .info-row {
             font-size: 11px;
             color: #475569;
             line-height: 1.6;
             margin-bottom: 4px;
         }
-        
+
         .info-row strong {
             font-weight: 600;
             min-width: 80px;
             display: inline-block;
         }
-        
+
         .nav-section {
             margin-bottom: 20px;
         }
-        
+
         .nav-section h3 {
             font-size: 12px;
             font-weight: 600;
@@ -124,7 +125,7 @@
             margin-bottom: 8px;
             padding: 8px 12px;
         }
-        
+
         .nav-item {
             display: block;
             padding: 10px 12px;
@@ -136,46 +137,53 @@
             margin-bottom: 2px;
             cursor: pointer;
         }
-        
+
         .nav-item:hover {
             background-color: white;
             color: var(--primary-color);
         }
-        
+
         .nav-item.active {
             background-color: var(--primary-color);
             color: white;
         }
-        
+
         .nav-subsection {
             margin-left: 15px;
             margin-top: 5px;
         }
-        
+
         .nav-subsection .nav-item {
             font-size: 13px;
             padding: 8px 12px;
         }
-        
+
         .nav-subsection .nav-subsection {
             margin-left: 20px;
         }
-        
+
         .nav-subsection .nav-subsection .nav-item {
             font-size: 12px;
             padding: 6px 10px;
         }
-        
+
         .markdown-content {
             max-width: 100%;
             animation: fadeIn 0.3s ease-in;
         }
-        
+
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
-        
+
         .markdown-content h1 {
             font-size: 2.5rem;
             font-weight: 700;
@@ -184,7 +192,7 @@
             border-bottom: 2px solid var(--border-color);
             padding-bottom: 0.5rem;
         }
-        
+
         .markdown-content h2 {
             font-size: 2rem;
             font-weight: 600;
@@ -194,7 +202,7 @@
             padding-top: 1rem;
             border-top: 1px solid var(--border-color);
         }
-        
+
         .markdown-content h3 {
             font-size: 1.5rem;
             font-weight: 600;
@@ -202,7 +210,7 @@
             margin-top: 2rem;
             margin-bottom: 0.75rem;
         }
-        
+
         .markdown-content h4 {
             font-size: 1.25rem;
             font-weight: 600;
@@ -210,22 +218,23 @@
             margin-top: 1.5rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .markdown-content p {
             margin-bottom: 1rem;
             color: #475569;
         }
-        
-        .markdown-content ul, .markdown-content ol {
+
+        .markdown-content ul,
+        .markdown-content ol {
             margin-bottom: 1rem;
             padding-left: 2rem;
         }
-        
+
         .markdown-content li {
             margin-bottom: 0.5rem;
             color: #475569;
         }
-        
+
         .markdown-content code {
             background-color: var(--code-bg);
             padding: 0.2em 0.4em;
@@ -234,7 +243,7 @@
             font-size: 0.9em;
             color: #e11d48;
         }
-        
+
         .markdown-content pre {
             background-color: var(--code-bg);
             border: 1px solid var(--border-color);
@@ -244,14 +253,14 @@
             margin-bottom: 1.5rem;
             line-height: 1.5;
         }
-        
+
         .markdown-content pre code {
             background-color: transparent;
             padding: 0;
             color: var(--text-color);
             font-size: 0.875rem;
         }
-        
+
         .markdown-content blockquote {
             border-left: 4px solid var(--primary-color);
             padding-left: 1rem;
@@ -262,48 +271,49 @@
             padding: 1rem 1rem 1rem 1.5rem;
             border-radius: 0 0.5rem 0.5rem 0;
         }
-        
+
         .markdown-content table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 1.5rem;
             font-size: 0.9rem;
         }
-        
-        .markdown-content th, .markdown-content td {
+
+        .markdown-content th,
+        .markdown-content td {
             border: 1px solid var(--border-color);
             padding: 0.75rem;
             text-align: left;
         }
-        
+
         .markdown-content th {
             background-color: var(--secondary-color);
             font-weight: 600;
             color: var(--text-color);
         }
-        
+
         .markdown-content tr:hover {
             background-color: var(--hover-color);
         }
-        
+
         .markdown-content a {
             color: var(--primary-color);
             text-decoration: none;
             border-bottom: 1px solid transparent;
             transition: border-color 0.2s;
         }
-        
+
         .markdown-content a:hover {
             border-bottom-color: var(--primary-color);
         }
-        
+
         .markdown-content img {
             max-width: 100%;
             height: auto;
             border-radius: 0.5rem;
             margin: 1rem 0;
         }
-        
+
         .mermaid {
             margin: 2rem 0;
             padding: 1.5rem;
@@ -312,7 +322,7 @@
             border-radius: 0.5rem;
             overflow-x: auto;
         }
-        
+
         .loading {
             display: flex;
             flex-direction: column;
@@ -321,7 +331,7 @@
             min-height: 400px;
             color: #64748b;
         }
-        
+
         .loading-spinner {
             width: 50px;
             height: 50px;
@@ -331,11 +341,13 @@
             animation: spin 1s linear infinite;
             margin-bottom: 1rem;
         }
-        
+
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
-        
+
         .error {
             padding: 2rem;
             background: #fef2f2;
@@ -344,11 +356,77 @@
             color: #991b1b;
             margin: 2rem 0;
         }
-        
+
         .error h3 {
             margin-bottom: 0.5rem;
         }
-        
+
+        .lang-switcher {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .lang-switcher-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: white;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .lang-switcher-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .lang-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 4px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            min-width: 140px;
+            overflow: hidden;
+        }
+
+        .lang-dropdown.open {
+            display: block;
+        }
+
+        .lang-option {
+            display: block;
+            width: 100%;
+            padding: 8px 14px;
+            border: none;
+            background: none;
+            text-align: left;
+            font-size: 13px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .lang-option:hover {
+            background: var(--hover-color);
+        }
+
+        .lang-option.active {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
         @media (max-width: 1024px) {
             .sidebar {
                 width: 100%;
@@ -357,7 +435,7 @@
                 border-right: none;
                 border-bottom: 1px solid var(--border-color);
             }
-            
+
             .content {
                 margin-left: 0;
                 padding: 20px;
@@ -366,191 +444,211 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <nav class="sidebar">
             <a href="https://github.com/jj4jj/CodeWiki" class="repo-link" target="_blank">🔗 View Repository</a>
             <div class="logo">📚 CodeWiki</div>
-            
+            <div class="lang-switcher" id="lang-switcher" style="display: none;"></div>
+
             <div class="repo-info" id="repo-info" style="display: block;">
                 <h4>Generation Info</h4>
-                <div id="info-content"><div class="info-row"><strong>Model:</strong> glm-4.7</div>
-                <div class="info-row"><strong>Generated:</strong> 2026-02-26</div>
-                <div class="info-row"><strong>Components:</strong> 199</div>
-                <div class="info-row"><strong>Max Depth:</strong> 3</div></div>
+                <div id="info-content">
+                    <div class="info-row"><strong>Model:</strong> glm-4.7</div>
+                    <div class="info-row"><strong>Generated:</strong> 2026-02-26</div>
+                    <div class="info-row"><strong>Components:</strong> 199</div>
+                    <div class="info-row"><strong>Max Depth:</strong> 3</div>
+                </div>
             </div>
-            
+
             <div class="nav-section">
                 <div class="nav-item active" data-file="overview.md">
                     📄 Overview
                 </div>
             </div>
-            
+
             <div id="navigation"></div>
         </nav>
-        
+
         <main class="content">
             <div id="loading" class="loading">
                 <div class="loading-spinner"></div>
                 <p>Loading documentation...</p>
             </div>
-            
+
             <div id="content" class="markdown-content" style="display: none;"></div>
         </main>
     </div>
-    
+
     <script>
         // Embedded configuration
         const CONFIG = {};
         const MODULE_TREE = {
-  "cli_adapters": {
-    "path": "codewiki/cli/adapters",
-    "components": [
-      "codewiki.cli.adapters.doc_generator.CLIDocumentationGenerator",
-      "codewiki.cli.adapters.translator.DocTranslator",
-      "codewiki.cli.html_generator.HTMLGenerator"
-    ],
-    "children": {}
-  },
-  "cli_config": {
-    "path": "codewiki/cli",
-    "components": [
-      "codewiki.cli.config_manager.ConfigManager",
-      "codewiki.cli.git_manager.GitManager"
-    ],
-    "children": {}
-  },
-  "cli_models": {
-    "path": "codewiki/cli/models",
-    "components": [
-      "codewiki.cli.models.config.Configuration",
-      "codewiki.cli.models.config.AgentInstructions",
-      "codewiki.cli.models.job.LLMConfig",
-      "codewiki.cli.models.job.JobStatus",
-      "codewiki.cli.models.job.JobStatistics",
-      "codewiki.cli.models.job.DocumentationJob",
-      "codewiki.cli.models.job.GenerationOptions"
-    ],
-    "children": {}
-  },
-  "cli_utils": {
-    "path": "codewiki/cli/utils",
-    "components": [
-      "codewiki.cli.utils.logging.CLILogger",
-      "codewiki.cli.utils.progress.ProgressTracker",
-      "codewiki.cli.utils.progress.ModuleProgressBar"
-    ],
-    "children": {}
-  },
-  "be_agent_orchestrator": {
-    "path": "codewiki/src/be",
-    "components": [
-      "codewiki.src.be.agent_orchestrator.AgentOrchestrator",
-      "codewiki.src.be.cmd_agent_orchestrator.CmdAgentOrchestrator",
-      "codewiki.src.be.documentation_generator.DocumentationGenerator"
-    ],
-    "children": {}
-  },
-  "be_agent_tools": {
-    "path": "codewiki/src/be/agent_tools",
-    "components": [
-      "codewiki.src.be.agent_tools.deps.CodeWikiDeps",
-      "codewiki.src.be.agent_tools.str_replace_editor.WindowExpander",
-      "codewiki.src.be.agent_tools.str_replace_editor.Filemap",
-      "codewiki.src.be.agent_tools.str_replace_editor.EditTool"
-    ],
-    "children": {}
-  },
-  "dependency_analyzer": {
-    "path": "codewiki/src/be/dependency_analyzer",
-    "components": [
-      "codewiki.src.be.dependency_analyzer.ast_parser.DependencyParser",
-      "codewiki.src.be.dependency_analyzer.dependency_graphs_builder.DependencyGraphBuilder",
-      "codewiki.src.be.dependency_analyzer.analysis.analysis_service.AnalysisService",
-      "codewiki.src.be.dependency_analyzer.analysis.call_graph_analyzer.CallGraphAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analysis.repo_analyzer.RepoAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.c.TreeSitterCAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.cpp.TreeSitterCppAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.csharp.TreeSitterCSharpAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.go.TreeSitterGoAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.java.TreeSitterJavaAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.javascript.TreeSitterJSAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.php.TreeSitterPHPAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.php.NamespaceResolver",
-      "codewiki.src.be.dependency_analyzer.analyzers.python.PythonASTAnalyzer",
-      "codewiki.src.be.dependency_analyzer.analyzers.typescript.TreeSitterTSAnalyzer",
-      "codewiki.src.be.dependency_analyzer.models.analysis.AnalysisResult",
-      "codewiki.src.be.dependency_analyzer.models.analysis.NodeSelection",
-      "codewiki.src.be.dependency_analyzer.models.core.CallRelationship",
-      "codewiki.src.be.dependency_analyzer.models.core.Repository",
-      "codewiki.src.be.dependency_analyzer.models.core.Node",
-      "codewiki.src.be.dependency_analyzer.utils.logging_config.ColoredFormatter"
-    ],
-    "children": {}
-  },
-  "frontend": {
-    "path": "codewiki/src/fe",
-    "components": [
-      "codewiki.src.fe.background_worker.BackgroundWorker",
-      "codewiki.src.fe.cache_manager.CacheManager",
-      "codewiki.src.fe.config.WebAppConfig",
-      "codewiki.src.fe.github_processor.GitHubRepoProcessor",
-      "codewiki.src.fe.models.JobStatus",
-      "codewiki.src.fe.models.CacheEntry",
-      "codewiki.src.fe.models.JobStatusResponse",
-      "codewiki.src.fe.models.RepositorySubmission",
-      "codewiki.src.fe.routes.WebRoutes",
-      "codewiki.src.fe.template_utils.StringTemplateLoader"
-    ],
-    "children": {}
-  },
-  "core_utils": {
-    "path": "codewiki/src",
-    "components": [
-      "codewiki.src.config.Config",
-      "codewiki.src.utils.FileManager"
-    ],
-    "children": {}
-  }
-};
+            "cli_adapters": {
+                "path": "codewiki/cli/adapters",
+                "components": [
+                    "codewiki.cli.adapters.doc_generator.CLIDocumentationGenerator",
+                    "codewiki.cli.adapters.translator.DocTranslator",
+                    "codewiki.cli.html_generator.HTMLGenerator"
+                ],
+                "children": {}
+            },
+            "cli_config": {
+                "path": "codewiki/cli",
+                "components": [
+                    "codewiki.cli.config_manager.ConfigManager",
+                    "codewiki.cli.git_manager.GitManager"
+                ],
+                "children": {}
+            },
+            "cli_models": {
+                "path": "codewiki/cli/models",
+                "components": [
+                    "codewiki.cli.models.config.Configuration",
+                    "codewiki.cli.models.config.AgentInstructions",
+                    "codewiki.cli.models.job.LLMConfig",
+                    "codewiki.cli.models.job.JobStatus",
+                    "codewiki.cli.models.job.JobStatistics",
+                    "codewiki.cli.models.job.DocumentationJob",
+                    "codewiki.cli.models.job.GenerationOptions"
+                ],
+                "children": {}
+            },
+            "cli_utils": {
+                "path": "codewiki/cli/utils",
+                "components": [
+                    "codewiki.cli.utils.logging.CLILogger",
+                    "codewiki.cli.utils.progress.ProgressTracker",
+                    "codewiki.cli.utils.progress.ModuleProgressBar"
+                ],
+                "children": {}
+            },
+            "be_agent_orchestrator": {
+                "path": "codewiki/src/be",
+                "components": [
+                    "codewiki.src.be.agent_orchestrator.AgentOrchestrator",
+                    "codewiki.src.be.cmd_agent_orchestrator.CmdAgentOrchestrator",
+                    "codewiki.src.be.documentation_generator.DocumentationGenerator"
+                ],
+                "children": {}
+            },
+            "be_agent_tools": {
+                "path": "codewiki/src/be/agent_tools",
+                "components": [
+                    "codewiki.src.be.agent_tools.deps.CodeWikiDeps",
+                    "codewiki.src.be.agent_tools.str_replace_editor.WindowExpander",
+                    "codewiki.src.be.agent_tools.str_replace_editor.Filemap",
+                    "codewiki.src.be.agent_tools.str_replace_editor.EditTool"
+                ],
+                "children": {}
+            },
+            "dependency_analyzer": {
+                "path": "codewiki/src/be/dependency_analyzer",
+                "components": [
+                    "codewiki.src.be.dependency_analyzer.ast_parser.DependencyParser",
+                    "codewiki.src.be.dependency_analyzer.dependency_graphs_builder.DependencyGraphBuilder",
+                    "codewiki.src.be.dependency_analyzer.analysis.analysis_service.AnalysisService",
+                    "codewiki.src.be.dependency_analyzer.analysis.call_graph_analyzer.CallGraphAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analysis.repo_analyzer.RepoAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.c.TreeSitterCAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.cpp.TreeSitterCppAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.csharp.TreeSitterCSharpAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.go.TreeSitterGoAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.java.TreeSitterJavaAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.javascript.TreeSitterJSAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.php.TreeSitterPHPAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.php.NamespaceResolver",
+                    "codewiki.src.be.dependency_analyzer.analyzers.python.PythonASTAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.analyzers.typescript.TreeSitterTSAnalyzer",
+                    "codewiki.src.be.dependency_analyzer.models.analysis.AnalysisResult",
+                    "codewiki.src.be.dependency_analyzer.models.analysis.NodeSelection",
+                    "codewiki.src.be.dependency_analyzer.models.core.CallRelationship",
+                    "codewiki.src.be.dependency_analyzer.models.core.Repository",
+                    "codewiki.src.be.dependency_analyzer.models.core.Node",
+                    "codewiki.src.be.dependency_analyzer.utils.logging_config.ColoredFormatter"
+                ],
+                "children": {}
+            },
+            "frontend": {
+                "path": "codewiki/src/fe",
+                "components": [
+                    "codewiki.src.fe.background_worker.BackgroundWorker",
+                    "codewiki.src.fe.cache_manager.CacheManager",
+                    "codewiki.src.fe.config.WebAppConfig",
+                    "codewiki.src.fe.github_processor.GitHubRepoProcessor",
+                    "codewiki.src.fe.models.JobStatus",
+                    "codewiki.src.fe.models.CacheEntry",
+                    "codewiki.src.fe.models.JobStatusResponse",
+                    "codewiki.src.fe.models.RepositorySubmission",
+                    "codewiki.src.fe.routes.WebRoutes",
+                    "codewiki.src.fe.template_utils.StringTemplateLoader"
+                ],
+                "children": {}
+            },
+            "core_utils": {
+                "path": "codewiki/src",
+                "components": [
+                    "codewiki.src.config.Config",
+                    "codewiki.src.utils.FileManager"
+                ],
+                "children": {}
+            }
+        };
         const METADATA = {
-  "generation_info": {
-    "timestamp": "2026-02-26T23:20:44.826780",
-    "main_model": "glm-4.7",
-    "generator_version": "1.0.1",
-    "repo_path": "/home/hex/workspace/CodeWiki",
-    "commit_id": null
-  },
-  "statistics": {
-    "total_components": 199,
-    "leaf_nodes": 55,
-    "max_depth": 3
-  },
-  "files_generated": [
-    "overview.md",
-    "module_tree.json",
-    "first_module_tree.json",
-    "cli_adapters.md",
-    "cli_utils.md",
-    "be_agent_tools.md",
-    "progress.md",
-    "cli_config.md",
-    "logging.md",
-    "dependency_analyzer.md",
-    "documentation_generator.md",
-    "translator.md",
-    "core_utils.md",
-    "agent_orchestrator.md",
-    "cmd_agent_orchestrator.md",
-    "frontend.md",
-    "be_agent_orchestrator.md",
-    "doc_generator.md",
-    "cli_models.md",
-    "html_generator.md"
-  ]
-};
+            "generation_info": {
+                "timestamp": "2026-02-26T23:20:44.826780",
+                "main_model": "glm-4.7",
+                "generator_version": "1.0.1",
+                "repo_path": "/home/hex/workspace/CodeWiki",
+                "commit_id": null
+            },
+            "statistics": {
+                "total_components": 199,
+                "leaf_nodes": 55,
+                "max_depth": 3
+            },
+            "files_generated": [
+                "overview.md",
+                "module_tree.json",
+                "first_module_tree.json",
+                "cli_adapters.md",
+                "cli_utils.md",
+                "be_agent_tools.md",
+                "progress.md",
+                "cli_config.md",
+                "logging.md",
+                "dependency_analyzer.md",
+                "documentation_generator.md",
+                "translator.md",
+                "core_utils.md",
+                "agent_orchestrator.md",
+                "cmd_agent_orchestrator.md",
+                "frontend.md",
+                "be_agent_orchestrator.md",
+                "doc_generator.md",
+                "cli_models.md",
+                "html_generator.md"
+            ]
+        };
         const DOCS_BASE_PATH = '';
-        
+        const AVAILABLE_LANGUAGES = ["zh"];
+
+        // Language display names
+        const LANG_NAMES = {
+            '': 'English',
+            'zh': '中文', 'zh-tw': '繁體中文',
+            'ja': '日本語', 'ko': '한국어',
+            'fr': 'Français', 'de': 'Deutsch',
+            'es': 'Español', 'pt': 'Português',
+            'ru': 'Русский', 'ar': 'العربية',
+            'it': 'Italiano', 'nl': 'Nederlands',
+            'pl': 'Polski', 'tr': 'Türkçe',
+            'vi': 'Tiếng Việt', 'th': 'ไทย',
+            'id': 'Bahasa Indonesia', 'hi': 'हिन्दी'
+        };
+        let currentLang = '';
+
         // Initialize marked with options
         marked.setOptions({
             breaks: true,
@@ -558,7 +656,7 @@
             headerIds: true,
             mangle: false
         });
-        
+
         // Initialize mermaid
         mermaid.initialize({
             startOnLoad: false,
@@ -574,35 +672,92 @@
             flowchart: { htmlLabels: true, curve: 'basis' },
             sequence: { mirrorActors: true, useMaxWidth: true }
         });
-        
+
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             if (MODULE_TREE) {
                 buildNavigation();
             }
-            
+
+            // Build language switcher if translations exist
+            if (AVAILABLE_LANGUAGES && AVAILABLE_LANGUAGES.length > 0) {
+                buildLanguageSwitcher();
+            }
+
             // Load overview by default
             loadDocument('overview.md');
         });
-        
+
+        function buildLanguageSwitcher() {
+            const container = document.getElementById('lang-switcher');
+            container.style.display = 'block';
+
+            const allLangs = ['', ...AVAILABLE_LANGUAGES];
+            const currentName = LANG_NAMES[currentLang] || currentLang || 'English';
+
+            let optionsHtml = '';
+            for (const lang of allLangs) {
+                const name = LANG_NAMES[lang] || lang || 'English';
+                const activeClass = lang === currentLang ? ' active' : '';
+                optionsHtml += `<button class="lang-option${activeClass}" data-lang="${lang}">${name}</button>`;
+            }
+
+            container.innerHTML = `
+                <button class="lang-switcher-btn" id="lang-btn">🌐 ${currentName} ▾</button>
+                <div class="lang-dropdown" id="lang-dropdown">${optionsHtml}</div>
+            `;
+
+            // Toggle dropdown
+            document.getElementById('lang-btn').addEventListener('click', function (e) {
+                e.stopPropagation();
+                document.getElementById('lang-dropdown').classList.toggle('open');
+            });
+
+            // Close on outside click
+            document.addEventListener('click', function () {
+                document.getElementById('lang-dropdown').classList.remove('open');
+            });
+
+            // Language selection
+            container.querySelectorAll('.lang-option').forEach(btn => {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    const lang = this.getAttribute('data-lang');
+                    switchLanguage(lang);
+                });
+            });
+        }
+
+        function switchLanguage(lang) {
+            currentLang = lang;
+
+            // Re-render switcher to update active state
+            buildLanguageSwitcher();
+
+            // Reload current document in new language
+            const activeItem = document.querySelector('.nav-item.active');
+            const currentFile = activeItem ? activeItem.getAttribute('data-file') : 'overview.md';
+            loadDocument(currentFile || 'overview.md');
+        }
+
         function buildNavigation() {
             const nav = document.getElementById('navigation');
             let html = '';
-            
+
             for (const [key, data] of Object.entries(MODULE_TREE)) {
                 html += buildNavItem(key, data, 0);
             }
-            
+
             nav.innerHTML = html;
-            
+
             // Add click handlers
             document.querySelectorAll('.nav-item').forEach(item => {
-                item.addEventListener('click', function(e) {
+                item.addEventListener('click', function (e) {
                     e.preventDefault();
                     const file = this.getAttribute('data-file');
                     if (file) {
                         loadDocument(file);
-                        
+
                         // Update active state
                         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
                         this.classList.add('active');
@@ -610,13 +765,13 @@
                 });
             });
         }
-        
+
         function buildNavItem(key, data, depth) {
             const indentClass = depth > 0 ? 'nav-subsection' : 'nav-section';
             const fileName = `${key}.md`;
-            
+
             let html = `<div class="${indentClass}">`;
-            
+
             if (data.components && data.components.length > 0) {
                 html += `<div class="nav-item" data-file="${fileName}">
                     ${formatNavTitle(key)}
@@ -628,17 +783,17 @@
                     ${formatNavTitle(key)}
                 </div>`;
             }
-            
+
             if (data.children) {
                 for (const [childKey, childData] of Object.entries(data.children)) {
                     html += buildNavItem(childKey, childData, depth + 1);
                 }
             }
-            
+
             html += '</div>';
             return html;
         }
-        
+
         function formatNavTitle(key) {
             return key
                 .replace(/_/g, ' ')
@@ -646,76 +801,79 @@
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ');
         }
-        
+
         async function loadDocument(filename) {
             const loading = document.getElementById('loading');
             const content = document.getElementById('content');
-            
+
             loading.style.display = 'flex';
             content.style.display = 'none';
-            
+
             try {
-                const docPath = DOCS_BASE_PATH ? `${DOCS_BASE_PATH}/${filename}` : filename;
+                let docPath = DOCS_BASE_PATH ? `${DOCS_BASE_PATH}/${filename}` : filename;
+                if (currentLang) {
+                    docPath = currentLang + '/' + docPath;
+                }
                 const response = await fetch(docPath);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${filename}`);
                 }
-                
+
                 const markdown = await response.text();
                 const html = await renderMarkdown(markdown);
-                
+
                 content.innerHTML = html;
                 loading.style.display = 'none';
                 content.style.display = 'block';
-                
+
                 // Render mermaid diagrams
                 await renderMermaidDiagrams();
-                
+
                 // Add click handlers for internal markdown links
                 setupMarkdownLinks();
-                
+
                 // Scroll to top
                 window.scrollTo(0, 0);
-                
+
             } catch (error) {
                 console.error('Error loading document:', error);
                 showError(`Failed to load document: ${filename}`);
             }
         }
-        
+
         function setupMarkdownLinks() {
             // Use event delegation to intercept all link clicks in markdown content
             const content = document.getElementById('content');
-            
+
             // Remove any existing listener to avoid duplicates
             const oldListener = content._markdownLinkListener;
             if (oldListener) {
                 content.removeEventListener('click', oldListener);
             }
-            
+
             // Create new listener
-            const listener = function(e) {
+            const listener = function (e) {
                 // Find the closest anchor tag
                 const link = e.target.closest('a');
                 if (!link) return;
-                
+
                 const href = link.getAttribute('href');
                 if (!href) return;
-                
+
                 // Check if it's a markdown file link (ends with .md or .MD)
                 // Also handle cases with anchors like "file.md#section"
                 const mdMatch = href.match(/([^\/]*\.md(?:#.*)?$)/i);
                 if (mdMatch) {
                     e.preventDefault();
                     e.stopPropagation();
-                    
+
                     // Extract filename without anchor
                     const fullMatch = mdMatch[1];
                     const filename = fullMatch.split('#')[0];
-                    
+
                     // Load the document
                     loadDocument(filename);
-                    
+
                     // Update active state in sidebar
                     document.querySelectorAll('.nav-item').forEach(item => {
                         if (item.getAttribute('data-file') === filename) {
@@ -725,18 +883,18 @@
                     });
                 }
             };
-            
+
             // Store listener reference for cleanup
             content._markdownLinkListener = listener;
-            
+
             // Attach listener
             content.addEventListener('click', listener);
         }
-        
+
         async function renderMarkdown(markdown) {
             // Convert markdown to HTML using marked
             let html = marked.parse(markdown);
-            
+
             // Process mermaid code blocks
             html = html.replace(
                 /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g,
@@ -750,18 +908,18 @@
                     return `<div class="mermaid">${decodedCode}</div>`;
                 }
             );
-            
+
             return html;
         }
-        
+
         async function renderMermaidDiagrams() {
             const mermaidElements = document.querySelectorAll('.mermaid');
-            
+
             for (let i = 0; i < mermaidElements.length; i++) {
                 const element = mermaidElements[i];
                 const id = `mermaid-${Date.now()}-${i}`;
                 element.id = id;
-                
+
                 try {
                     const { svg } = await mermaid.render(id + '-svg', element.textContent);
                     element.innerHTML = svg;
@@ -771,11 +929,11 @@
                 }
             }
         }
-        
+
         function showError(message) {
             const loading = document.getElementById('loading');
             const content = document.getElementById('content');
-            
+
             loading.style.display = 'none';
             content.style.display = 'block';
             content.innerHTML = `
@@ -787,5 +945,5 @@
         }
     </script>
 </body>
-</html>
 
+</html>

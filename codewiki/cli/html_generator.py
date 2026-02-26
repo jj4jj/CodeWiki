@@ -4,7 +4,7 @@ HTML generator for GitHub Pages documentation viewer.
 
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from codewiki.cli.utils.errors import FileSystemError
 from codewiki.cli.utils.fs import safe_write, safe_read
@@ -144,10 +144,16 @@ class HTMLGenerator:
             except Exception:
                 docs_base_path = "."
         
+        # Detect available languages
+        available_languages = []
+        if docs_dir:
+            available_languages = self.detect_available_languages(docs_dir)
+        
         # Prepare JSON data for embedding
         config_json = json.dumps(config, indent=2)
         module_tree_json = json.dumps(module_tree, indent=2)
         metadata_json = json.dumps(metadata, indent=2) if metadata else "null"
+        available_languages_json = json.dumps(available_languages)
         
         # Replace placeholders
         html_content = template_content
@@ -160,6 +166,7 @@ class HTMLGenerator:
             "{{MODULE_TREE_JSON}}": module_tree_json,
             "{{METADATA_JSON}}": metadata_json,
             "{{DOCS_BASE_PATH}}": docs_base_path,
+            "{{AVAILABLE_LANGUAGES}}": available_languages_json,
         }
         
         for placeholder, value in replacements.items():
@@ -232,6 +239,31 @@ class HTMLGenerator:
                 .replace('>', '&gt;')
                 .replace('"', '&quot;')
                 .replace("'", '&#39;'))
+    
+    def detect_available_languages(self, docs_dir: Path) -> List[str]:
+        """
+        Detect available translation language directories.
+        
+        Scans docs_dir for subdirectories that contain .md files,
+        indicating they are translation directories (e.g. zh/, ja/).
+        
+        Args:
+            docs_dir: Documentation directory path
+            
+        Returns:
+            List of language codes (e.g. ['zh', 'ja'])
+        """
+        languages = []
+        try:
+            for child in sorted(docs_dir.iterdir()):
+                if child.is_dir() and not child.name.startswith(('.', '_', 'temp')):
+                    # Check if directory contains .md files
+                    md_files = list(child.glob('*.md'))
+                    if md_files:
+                        languages.append(child.name)
+        except Exception:
+            pass
+        return languages
        
 
     
