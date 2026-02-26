@@ -150,6 +150,19 @@ def parse_patterns(patterns_str: str) -> List[str]:
         '(bypasses all context-window limits).'
     ),
 )
+@click.option(
+    "--concurrency",
+    "-j",
+    "concurrency",
+    type=int,
+    default=4,
+    show_default=True,
+    help=(
+        'Number of modules to process in parallel. '
+        'Leaf modules are independent and safe to parallelize. '
+        'Use -j 1 for strict serial mode if hitting API rate limits.'
+    ),
+)
 @click.pass_context
 def generate_command(
     ctx,
@@ -169,6 +182,7 @@ def generate_command(
     max_depth: Optional[int],
     output_lang: Optional[str],
     agent_cmd: Optional[str],
+    concurrency: int,
 ):
     """
     Generate comprehensive documentation for a code repository.
@@ -425,6 +439,8 @@ def generate_command(
                 'max_token_per_leaf_module': max_token_per_leaf_module if max_token_per_leaf_module is not None else config.max_token_per_leaf_module,
                 # Max depth setting (runtime override takes precedence)
                 'max_depth': max_depth if max_depth is not None else config.max_depth,
+                # Parallel processing
+                'concurrency': max(1, concurrency),
             },
             verbose=verbose,
             generate_html=github_pages

@@ -235,7 +235,10 @@ class CLIDocumentationGenerator:
         
         try:
             # Run the actual documentation generation
-            await doc_generator.generate_module_documentation(components, leaf_nodes)
+            await doc_generator.generate_module_documentation(
+                components, leaf_nodes,
+                concurrency=self.config.get('concurrency', 1)
+            )
             
             if self.verbose:
                 self.progress_tracker.update_stage(0.9, "Creating repository overview...")

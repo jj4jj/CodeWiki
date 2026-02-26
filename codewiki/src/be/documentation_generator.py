@@ -2,10 +2,17 @@ import logging
 import os
 import json
 import time
+import asyncio
+from contextlib import asynccontextmanager
 from typing import Dict, List, Any
 from copy import deepcopy
 import traceback
 import sys
+
+# A no-op async context manager for the lock-free (concurrency=1) path
+@asynccontextmanager
+async def _noop_ctx():
+    yield
 
 # Configure logging and monitoring
 logger = logging.getLogger(__name__)
@@ -131,7 +138,12 @@ class DocumentationGenerator:
 
         return processed_module_tree
 
-    async def generate_module_documentation(self, components: Dict[str, Any], leaf_nodes: List[str]) -> str:
+    async def generate_module_documentation(
+        self,
+        components: Dict[str, Any],
+        leaf_nodes: List[str],
+        concurrency: int = 1,
+    ) -> str:
         """Generate documentation for all modules using dynamic programming approach."""
         # Prepare output directory
         working_dir = os.path.abspath(self.config.docs_dir)
@@ -141,86 +153,100 @@ class DocumentationGenerator:
         first_module_tree_path = os.path.join(working_dir, FIRST_MODULE_TREE_FILENAME)
         module_tree = file_manager.load_json(module_tree_path)
         first_module_tree = file_manager.load_json(first_module_tree_path)
-        
+
         # Get processing order (leaf modules first)
         processing_order = self.get_processing_order(first_module_tree)
         total_modules = len(processing_order) + 1  # +1 for the final overview
-        done_count = [0]  # mutable counter
+        done_count = [0]  # mutable counter (protected by lock)
+        lock = asyncio.Lock() if concurrency > 1 else None
 
-        def _print_progress(symbol: str, label: str, name: str, elapsed: float = None):
-            idx = done_count[0]
+        async def _inc_and_progress(symbol: str, label: str, name: str, elapsed: float = None):
+            async with (lock or _noop_ctx()):
+                done_count[0] += 1
+                idx = done_count[0]
             t = f" ({elapsed:.1f}s)" if elapsed is not None else ""
-            line = f"  [{idx}/{total_modules}] {symbol} [{label}] {name}{t}"
-            print(line, flush=True)
+            print(f"  [{idx}/{total_modules}] {symbol} [{label}] {name}{t}", flush=True)
 
-        
-        # Process modules in dependency order
-        final_module_tree = module_tree
-        processed_modules = set()
+        # Build semaphore for concurrency control
+        sem = asyncio.Semaphore(concurrency)
 
-        if len(module_tree) > 0:
-            for module_path, module_name in processing_order:
-                try:
-                    # Get the module info from the tree
-                    module_info = module_tree
-                    for path_part in module_path:
-                        module_info = module_info[path_part]
-                        if path_part != module_path[-1]:  # Not the last part
-                            module_info = module_info.get("children", {})
-                    
-                    # Skip if already processed
-                    module_key = "/".join(module_path)
-                    if module_key in processed_modules:
-                        continue
+        async def _process_one(module_path, module_name, module_info):
+            """Process a single module, respecting the concurrency semaphore."""
+            module_key = "/".join(module_path)
 
-                    done_count[0] += 1
-                    label = "leaf" if self.is_leaf_module(module_info) else "parent"
+            docs_path = os.path.join(working_dir, f"{module_name}.md")
+            overview_path = os.path.join(working_dir, OVERVIEW_FILENAME)
+            if os.path.exists(docs_path) or os.path.exists(overview_path):
+                await _inc_and_progress("↩", "skip", module_name)
+                return
 
-                    # Check if this module is already done (checkpoint resume)
-                    docs_path = os.path.join(working_dir, f"{module_name}.md")
-                    overview_path = os.path.join(working_dir, OVERVIEW_FILENAME)
-                    already_done = os.path.exists(docs_path) or os.path.exists(overview_path)
-                    if already_done:
-                        _print_progress("↩", "skip", module_name)
-                        processed_modules.add(module_key)
-                        continue
+            label = "leaf" if self.is_leaf_module(module_info) else "parent"
+            await _inc_and_progress("▶", label, module_name)
+            t0 = time.time()
 
-                    _print_progress("▶", label, module_name)
-                    t0 = time.time()
-
-                    # Process the module
+            try:
+                async with sem:
                     if self.is_leaf_module(module_info):
                         logger.info(f"📄 Processing leaf module: {module_key}")
-                        final_module_tree = await self.agent_orchestrator.process_module(
+                        await self.agent_orchestrator.process_module(
                             module_name, components, module_info["components"], module_path, working_dir
                         )
                     else:
                         logger.info(f"📁 Processing parent module: {module_key}")
-                        final_module_tree = await self.generate_parent_module_docs(
-                            module_path, working_dir
-                        )
+                        await self.generate_parent_module_docs(module_path, working_dir)
 
-                    elapsed = time.time() - t0
-                    _print_progress("✓", label, module_name, elapsed)
-                    processed_modules.add(module_key)
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process module {module_key}: {str(e)}")
-                    logger.error(f"Traceback: {traceback.format_exc()}")
-                    _print_progress("✗", "error", f"{module_name}: {str(e)[:60]}")
+                elapsed = time.time() - t0
+                await _inc_and_progress("✓", label, module_name, elapsed)
+            except Exception as e:
+                logger.error(f"Failed to process module {module_key}: {str(e)}")
+                logger.error(traceback.format_exc())
+                await _inc_and_progress("✗", "error", f"{module_name}: {str(e)[:60]}")
+
+        # Separate modules into independent leaf batches vs parent steps
+        # Leaf modules at the same depth share no dependencies → safe to parallelize
+        # Parent modules need their children done first → kept sequential
+        final_module_tree = module_tree
+
+        if len(module_tree) > 0:
+            # Partition into leaf and non-leaf tasks
+            leaf_tasks = []
+            parent_tasks = []
+            seen_keys = set()
+
+            for module_path, module_name in processing_order:
+                module_info = module_tree
+                for part in module_path:
+                    module_info = module_info[part]
+                    if part != module_path[-1]:
+                        module_info = module_info.get("children", {})
+                module_key = "/".join(module_path)
+                if module_key in seen_keys:
                     continue
+                seen_keys.add(module_key)
+                if self.is_leaf_module(module_info):
+                    leaf_tasks.append((module_path, module_name, module_info))
+                else:
+                    parent_tasks.append((module_path, module_name, module_info))
 
-            # Generate repo overview
+            # Run all leaf modules in parallel (up to `concurrency` at a time)
+            if leaf_tasks:
+                await asyncio.gather(*[
+                    _process_one(mp, mn, mi) for mp, mn, mi in leaf_tasks
+                ])
+
+            # Run parent modules sequentially (they aggregate leaf docs)
+            for mp, mn, mi in parent_tasks:
+                await _process_one(mp, mn, mi)
+
+            # Final repo overview
             done_count[0] += 1
-            _print_progress("▶", "overview", "repository overview")
+            print(f"  [{done_count[0]}/{total_modules}] ▶ [overview] repository overview", flush=True)
             t0 = time.time()
-            logger.info(f"📚 Generating repository overview")
-            final_module_tree = await self.generate_parent_module_docs(
-                [], working_dir
-            )
-            _print_progress("✓", "overview", "repository overview", time.time() - t0)
+            final_module_tree = await self.generate_parent_module_docs([], working_dir)
+            print(f"  [{done_count[0]}/{total_modules}] ✓ [overview] repository overview ({time.time()-t0:.1f}s)", flush=True)
+
         else:
-            logger.info(f"Processing whole repo because repo can fit in the context window")
+            logger.info("Processing whole repo because repo can fit in the context window")
             repo_name = os.path.basename(os.path.normpath(self.config.repo_path))
             final_module_tree = await self.agent_orchestrator.process_module(
                 repo_name, components, leaf_nodes, [], working_dir
