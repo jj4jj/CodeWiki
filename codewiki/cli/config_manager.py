@@ -114,6 +114,7 @@ class ConfigManager:
         main_model: Optional[str] = None,
         cluster_model: Optional[str] = None,
         fallback_model: Optional[str] = None,
+        fallback_models: Optional[list] = None,
         default_output: Optional[str] = None,
         max_tokens: Optional[int] = None,
         max_token_per_module: Optional[int] = None,
@@ -150,12 +151,20 @@ class ConfigManager:
                 )
 
         # Update fields
-        if base_url      is not None: self._config.base_url      = base_url
-        if main_model    is not None: self._config.main_model    = main_model
-        if cluster_model is not None: self._config.cluster_model = cluster_model
-        if fallback_model is not None: self._config.fallback_model = fallback_model
-        if default_output is not None: self._config.default_output = default_output
-        if max_tokens     is not None: self._config.max_tokens    = max_tokens
+        if base_url       is not None: self._config.base_url       = base_url
+        if main_model     is not None: self._config.main_model     = main_model
+        if cluster_model  is not None: self._config.cluster_model  = cluster_model
+        if fallback_model is not None:
+            self._config.fallback_model = fallback_model
+            # Also update the list if not explicitly provided
+            if fallback_models is None:
+                self._config.fallback_models = [fallback_model]
+        if fallback_models is not None:
+            self._config.fallback_models = fallback_models
+            if fallback_models:
+                self._config.fallback_model = fallback_models[0]
+        if default_output  is not None: self._config.default_output  = default_output
+        if max_tokens      is not None: self._config.max_tokens      = max_tokens
         if max_token_per_module      is not None: self._config.max_token_per_module      = max_token_per_module
         if max_token_per_leaf_module is not None: self._config.max_token_per_leaf_module = max_token_per_leaf_module
         if max_depth is not None: self._config.max_depth = max_depth

@@ -38,7 +38,7 @@ def is_cli_context() -> bool:
 # In CLI mode, these will be loaded from ~/.codewiki/config.json + keyring
 # In web app mode, use environment variables
 MAIN_MODEL = os.getenv('MAIN_MODEL', 'claude-sonnet-4')
-FALLBACK_MODEL_1 = os.getenv('FALLBACK_MODEL_1', 'glm-4p5')
+FALLBACK_MODEL_1 = os.getenv('FALLBACK_MODEL_1', MAIN_MODEL)  # defaults to main model
 CLUSTER_MODEL = os.getenv('CLUSTER_MODEL', MAIN_MODEL)
 LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'http://0.0.0.0:4000/')
 LLM_API_KEY = os.getenv('LLM_API_KEY', 'sk-1234')
@@ -56,13 +56,26 @@ class Config:
     llm_api_key: str
     main_model: str
     cluster_model: str
-    fallback_model: str = FALLBACK_MODEL_1
+    fallback_model: str = ""          # legacy single fallback (kept for backward compat)
+    fallback_models: List[str] = field(default_factory=list)  # ordered list: tried in sequence
+    agent_cmd: str = ""               # when set, use this CLI agent instead of the LLM API
     # Max token settings
     max_tokens: int = DEFAULT_MAX_TOKENS
     max_token_per_module: int = DEFAULT_MAX_TOKEN_PER_MODULE
     max_token_per_leaf_module: int = DEFAULT_MAX_TOKEN_PER_LEAF_MODULE
     # Agent instructions for customization
     agent_instructions: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        # Normalize fallback_models list
+        if self.fallback_models is None:
+            self.fallback_models = []
+        # If list is empty but legacy single field is set, promote it
+        if not self.fallback_models and self.fallback_model:
+            self.fallback_models = [self.fallback_model]
+        # Final safety net: if still empty, fallback to main_model
+        if not self.fallback_models:
+            self.fallback_models = [self.main_model]
     
     @property
     def include_patterns(self) -> Optional[List[str]]:
@@ -154,7 +167,9 @@ class Config:
         llm_api_key: str,
         main_model: str,
         cluster_model: str,
-        fallback_model: str = FALLBACK_MODEL_1,
+        fallback_model: str = "",
+        fallback_models: Optional[List[str]] = None,
+        agent_cmd: str = "",
         max_tokens: int = DEFAULT_MAX_TOKENS,
         max_token_per_module: int = DEFAULT_MAX_TOKEN_PER_MODULE,
         max_token_per_leaf_module: int = DEFAULT_MAX_TOKEN_PER_LEAF_MODULE,
@@ -194,7 +209,9 @@ class Config:
             llm_api_key=llm_api_key,
             main_model=main_model,
             cluster_model=cluster_model,
+            agent_cmd=agent_cmd,
             fallback_model=fallback_model,
+            fallback_models=fallback_models or ([fallback_model] if fallback_model else []),
             max_tokens=max_tokens,
             max_token_per_module=max_token_per_module,
             max_token_per_leaf_module=max_token_per_leaf_module,

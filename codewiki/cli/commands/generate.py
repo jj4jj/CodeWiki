@@ -137,6 +137,19 @@ def parse_patterns(patterns_str: str) -> List[str]:
         "Output is written to <output-dir>/<lang>/ with the same file structure."
     ),
 )
+@click.option(
+    "--with-agent-cmd",
+    "--agent-cmd",
+    "agent_cmd",
+    type=str,
+    default=None,
+    help=(
+        'Replace LLM API calls with a CLI agent subprocess. '
+        'The prompt is passed via stdin; stdout is captured as the documentation. '
+        'Example: --with-agent-cmd "claude --dangerously-skip-permissions -p" '
+        '(bypasses all context-window limits).'
+    ),
+)
 @click.pass_context
 def generate_command(
     ctx,
@@ -155,6 +168,7 @@ def generate_command(
     max_token_per_leaf_module: Optional[int],
     max_depth: Optional[int],
     output_lang: Optional[str],
+    agent_cmd: Optional[str],
 ):
     """
     Generate comprehensive documentation for a code repository.
@@ -375,6 +389,8 @@ def generate_command(
                 'main_model': config.main_model,
                 'cluster_model': config.cluster_model,
                 'fallback_model': config.fallback_model,
+                'fallback_models': config.fallback_models if hasattr(config, 'fallback_models') else [],
+                'agent_cmd': agent_cmd or '',
                 'base_url': config.base_url,
                 'api_key': api_key,
                 'agent_instructions': agent_instructions_dict,

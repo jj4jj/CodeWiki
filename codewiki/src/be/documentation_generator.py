@@ -33,7 +33,15 @@ class DocumentationGenerator:
         self.config = config
         self.commit_id = commit_id
         self.graph_builder = DependencyGraphBuilder(config)
-        self.agent_orchestrator = AgentOrchestrator(config)
+
+        # Choose orchestrator: CLI agent subprocess or pydantic-ai API
+        if getattr(config, 'agent_cmd', None):
+            from codewiki.src.be.cmd_agent_orchestrator import CmdAgentOrchestrator
+            self.agent_orchestrator = CmdAgentOrchestrator(config, config.agent_cmd)
+            self._cmd_mode = True
+        else:
+            self.agent_orchestrator = AgentOrchestrator(config)
+            self._cmd_mode = False
     
     def create_documentation_metadata(self, working_dir: str, components: Dict[str, Any], num_leaf_nodes: int):
         """Create a metadata file with documentation generation information."""
@@ -199,13 +207,22 @@ class DocumentationGenerator:
     async def generate_parent_module_docs(self, module_path: List[str], 
                                         working_dir: str) -> Dict[str, Any]:
         """Generate documentation for a parent module based on its children's documentation."""
+        # Load module tree (needed by both paths)
+        module_tree_path = os.path.join(working_dir, MODULE_TREE_FILENAME)
+        module_tree = file_manager.load_json(module_tree_path)
+
+        # ── CLI agent mode ────────────────────────────────────────────────────
+        if self._cmd_mode:
+            return await self.agent_orchestrator.generate_parent_module_docs(
+                module_path=module_path,
+                working_dir=working_dir,
+                module_tree=module_tree,
+            )
+
+        # ── API mode (original logic) ─────────────────────────────────────────
         module_name = module_path[-1] if len(module_path) >= 1 else os.path.basename(os.path.normpath(self.config.repo_path))
 
         logger.info(f"Generating parent documentation for: {module_name}")
-        
-        # Load module tree
-        module_tree_path = os.path.join(working_dir, MODULE_TREE_FILENAME)
-        module_tree = file_manager.load_json(module_tree_path)
 
         # check if overview docs already exists
         overview_docs_path = os.path.join(working_dir, OVERVIEW_FILENAME)
@@ -235,7 +252,6 @@ class DocumentationGenerator:
             
             # Parse and save parent documentation
             parent_content = parent_docs.split("<OVERVIEW>")[1].split("</OVERVIEW>")[0].strip()
-            # parent_content = prompt
             file_manager.save_text(parent_content, parent_docs_path)
             
             logger.debug(f"Successfully generated parent documentation for: {module_name}")

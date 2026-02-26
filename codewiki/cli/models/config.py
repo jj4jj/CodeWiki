@@ -6,13 +6,12 @@ user settings stored in ~/.codewiki/config.json. These settings are converted
 to the backend Config class when running documentation generation.
 """
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from typing import Optional, List
 from pathlib import Path
 
 from codewiki.cli.utils.validation import (
     validate_url,
-    validate_api_key,
     validate_model_name,
 )
 
@@ -123,7 +122,8 @@ class Configuration:
     base_url: str
     main_model: str
     cluster_model: str
-    fallback_model: str = "glm-4p5"
+    fallback_model: str = ""  # legacy single fallback
+    fallback_models: List[str] = field(default_factory=list)  # ordered fallback chain
     default_output: str = "docs"
     max_tokens: int = 32768
     max_token_per_module: int = 36369
@@ -156,6 +156,11 @@ class Configuration:
             'max_token_per_leaf_module': self.max_token_per_leaf_module,
             'max_depth': self.max_depth,
         }
+        # Save fallback_models list (preferred) or legacy single field
+        if self.fallback_models:
+            result['fallback_models'] = self.fallback_models
+        elif self.fallback_model:
+            result['fallback_model'] = self.fallback_model
         if self.api_key:
             result['api_key'] = self.api_key
         if self.agent_instructions and not self.agent_instructions.is_empty():
@@ -177,11 +182,17 @@ class Configuration:
         if 'agent_instructions' in data:
             agent_instructions = AgentInstructions.from_dict(data['agent_instructions'])
         
+        fallback_models_raw = data.get('fallback_models', [])
+        # Back-compat: if only old single fallback_model key present, wrap it
+        if not fallback_models_raw and data.get('fallback_model'):
+            fallback_models_raw = [data['fallback_model']]
+
         return cls(
             base_url=data.get('base_url', ''),
             main_model=data.get('main_model', ''),
             cluster_model=data.get('cluster_model', ''),
-            fallback_model=data.get('fallback_model', 'glm-4p5'),
+            fallback_model=data.get('fallback_model', ''),
+            fallback_models=fallback_models_raw,
             default_output=data.get('default_output', 'docs'),
             max_tokens=data.get('max_tokens', 32768),
             max_token_per_module=data.get('max_token_per_module', 36369),

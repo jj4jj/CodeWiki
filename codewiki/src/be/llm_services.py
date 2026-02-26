@@ -1,6 +1,7 @@
 """
 LLM service factory for creating configured LLM clients.
 """
+from typing import List
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModelSettings
@@ -10,10 +11,10 @@ from openai import OpenAI
 from codewiki.src.config import Config
 
 
-def create_main_model(config: Config) -> OpenAIModel:
-    """Create the main LLM model from configuration."""
+def _make_model(model_name: str, config: Config) -> OpenAIModel:
+    """Create a single OpenAIModel with the shared provider and settings."""
     return OpenAIModel(
-        model_name=config.main_model,
+        model_name=model_name,
         provider=OpenAIProvider(
             base_url=config.llm_base_url,
             api_key=config.llm_api_key
@@ -23,28 +24,43 @@ def create_main_model(config: Config) -> OpenAIModel:
             max_tokens=config.max_tokens
         )
     )
+
+
+def create_main_model(config: Config) -> OpenAIModel:
+    """Create the main LLM model from configuration."""
+    return _make_model(config.main_model, config)
 
 
 def create_fallback_model(config: Config) -> OpenAIModel:
-    """Create the fallback LLM model from configuration."""
-    return OpenAIModel(
-        model_name=config.fallback_model,
-        provider=OpenAIProvider(
-            base_url=config.llm_base_url,
-            api_key=config.llm_api_key
-        ),
-        settings=OpenAIModelSettings(
-            temperature=0.0,
-            max_tokens=config.max_tokens
-        )
-    )
+    """Create a single fallback model (first in the fallback_models list, or main_model)."""
+    model_name = config.fallback_models[0] if config.fallback_models else config.main_model
+    return _make_model(model_name, config)
 
 
 def create_fallback_models(config: Config) -> FallbackModel:
-    """Create fallback models chain from configuration."""
+    """
+    Build a FallbackModel chain from config.fallback_models.
+
+    The chain is: main_model → fallback_models[0] → fallback_models[1] → …
+
+    If fallback_models contains only the same model as main_model, a single
+    entry chain is used (pydantic-ai handles it gracefully).
+    """
     main = create_main_model(config)
-    fallback = create_fallback_model(config)
-    return FallbackModel(main, fallback)
+
+    # Build fallback chain, deduplicating consecutive identical names
+    seen = {config.main_model}
+    extras: List[OpenAIModel] = []
+    for name in config.fallback_models:
+        if name and name not in seen:
+            extras.append(_make_model(name, config))
+            seen.add(name)
+
+    if not extras:
+        # No distinct fallback — use main as sole model (FallbackModel still works)
+        return FallbackModel(main, main)
+
+    return FallbackModel(main, *extras)
 
 
 def create_openai_client(config: Config) -> OpenAI:
@@ -63,19 +79,19 @@ def call_llm(
 ) -> str:
     """
     Call LLM with the given prompt.
-    
+
     Args:
         prompt: The prompt to send
         config: Configuration containing LLM settings
         model: Model name (defaults to config.main_model)
         temperature: Temperature setting
-        
+
     Returns:
         LLM response text
     """
     if model is None:
         model = config.main_model
-    
+
     client = create_openai_client(config)
     response = client.chat.completions.create(
         model=model,

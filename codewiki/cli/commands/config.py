@@ -68,9 +68,13 @@ def config_group():
     help="Model for module clustering (recommend top-tier). Env: CODEWIKI_CLUSTER_MODEL"
 )
 @click.option(
-    "--fallback-model",
+    "--fallback-models",
     type=str,
-    help="Fallback model for documentation generation. Env: CODEWIKI_FALLBACK_MODEL"
+    default=None,
+    help=(
+        "Comma-separated ordered list of fallback models to try when the main model fails. "
+        "Example: 'deepseek-chat,deepseek-reasoner'. Env: CODEWIKI_FALLBACK_MODEL"
+    ),
 )
 @click.option(
     "--save-key-to-file",
@@ -106,7 +110,7 @@ def config_set(
     base_url: Optional[str],
     main_model: Optional[str],
     cluster_model: Optional[str],
-    fallback_model: Optional[str],
+    fallback_models: Optional[str],
     max_tokens: Optional[int],
     max_token_per_module: Optional[int],
     max_token_per_leaf_module: Optional[int],
@@ -150,7 +154,7 @@ def config_set(
     """
     try:
         # Check if at least one option is provided
-        if not any([api_key, base_url, main_model, cluster_model, fallback_model, max_tokens, max_token_per_module, max_token_per_leaf_module, max_depth]):
+        if not any([api_key, base_url, main_model, cluster_model, fallback_models, max_tokens, max_token_per_module, max_token_per_leaf_module, max_depth]):
             click.echo("No options provided. Use --help for usage information.")
             sys.exit(EXIT_CONFIG_ERROR)
         
@@ -195,13 +199,18 @@ def config_set(
         # Create config manager and save
         manager = ConfigManager()
         manager.load()  # Load existing config if present
-        
+
+        # Parse fallback_models comma-separated list
+        fallback_models_list = None
+        if fallback_models:
+            fallback_models_list = [m.strip() for m in fallback_models.split(',') if m.strip()]
+
         manager.save(
             api_key=validated_data.get('api_key'),
             base_url=validated_data.get('base_url'),
             main_model=validated_data.get('main_model'),
             cluster_model=validated_data.get('cluster_model'),
-            fallback_model=validated_data.get('fallback_model'),
+            fallback_models=fallback_models_list,
             max_tokens=validated_data.get('max_tokens'),
             max_token_per_module=validated_data.get('max_token_per_module'),
             max_token_per_leaf_module=validated_data.get('max_token_per_leaf_module'),
@@ -351,7 +360,8 @@ def config_show(output_json: bool):
                 click.echo(f"  Base URL:         {_src(ENV_BASE_URL, config.base_url or 'Not set')}")
                 click.echo(f"  Main Model:       {_src(ENV_MAIN_MODEL, config.main_model or 'Not set')}")
                 click.echo(f"  Cluster Model:    {_src(ENV_CLUSTER_MODEL, config.cluster_model or 'Not set')}")
-                click.echo(f"  Fallback Model:   {_src(ENV_FALLBACK_MODEL, config.fallback_model or 'Not set')}")
+                fallback_display = ', '.join(config.fallback_models) if config.fallback_models else (config.fallback_model or 'same as main')
+                click.echo(f"  Fallback Models:  {_src(ENV_FALLBACK_MODEL, fallback_display)}")
             else:
                 click.secho("  Not configured", fg="yellow")
             
@@ -512,20 +522,44 @@ def config_validate(quick: bool, verbose: bool):
         if verbose:
             click.echo()
             click.echo("[4/5] Checking model configuration...")
-            click.echo(f"      Main model: {config.main_model}")
-            click.echo(f"      Cluster model: {config.cluster_model}")
-            click.echo(f"      Fallback model: {config.fallback_model}")
-        
-        if not config.main_model or not config.cluster_model or not config.fallback_model:
-            click.secho("✗ Models not configured", fg="red")
+            click.echo(f"      main_model:    {config.main_model or '(not set)'}")
+            click.echo(f"      cluster_model: {config.cluster_model or '(not set)'}")
+            click.echo(f"      fallback_model:{config.fallback_model or '(not set, optional)'}")
+
+        missing_models = []
+        if not config.main_model:
+            missing_models.append("main_model")
+        if not config.cluster_model:
+            missing_models.append("cluster_model")
+
+        if missing_models:
+            click.secho("✗ Models not configured. Missing keys:", fg="red")
+            for key in missing_models:
+                click.secho(f"    - {key}: not set", fg="red")
+            click.echo()
+            click.echo("  Fix with:")
+            example_models = " \\\n    ".join(
+                f"--{k.replace('_', '-')} <model-name>" for k in missing_models
+            )
+            click.secho(f"    codewiki config set {example_models}", fg="cyan")
+            click.echo()
+            click.echo("  Example (DeepSeek):")
+            click.secho(
+                "    codewiki config set --main-model deepseek-chat --cluster-model deepseek-chat",
+                fg="cyan"
+            )
             sys.exit(EXIT_CONFIG_ERROR)
-        
+
         if verbose:
             click.secho("      ✓ Models configured", fg="green")
         else:
-            click.secho(f"✓ Main model configured: {config.main_model}", fg="green")
-            click.secho(f"✓ Cluster model configured: {config.cluster_model}", fg="green")
-            click.secho(f"✓ Fallback model configured: {config.fallback_model}", fg="green")
+            click.secho(f"✓ Main model:    {config.main_model}", fg="green")
+            click.secho(f"✓ Cluster model: {config.cluster_model}", fg="green")
+            fb = ', '.join(config.fallback_models) if getattr(config, 'fallback_models', []) else config.fallback_model
+            if fb:
+                click.secho(f"✓ Fallback models: {fb}", fg="green")
+            else:
+                click.secho("  Fallback models: (same as main)", fg="bright_black")
         
         # Warn about non-top-tier cluster model
         if not is_top_tier_model(config.cluster_model):
