@@ -228,16 +228,20 @@ EXTENSION_TO_LANGUAGE = {
     ".hpp": "cpp",
     ".tsx": "typescript",
     ".cc": "cpp",
-    ".hpp": "cpp",
     ".cxx": "cpp",
     ".jsx": "javascript",
     ".mjs": "javascript",
     ".cjs": "javascript",
-    ".jsx": "javascript",
     ".cs": "csharp",
     ".php": "php",
     ".phtml": "php",
-    ".inc": "php"
+    ".inc": "php",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
 }
 
 
@@ -293,7 +297,7 @@ def format_user_prompt(module_name: str, core_component_ids: list[str], componen
         for component_id in component_ids_in_file:
             core_component_codes += f"- {component_id}\n"
         
-        core_component_codes += f"\n## File Content:\n```{EXTENSION_TO_LANGUAGE['.'+path.split('.')[-1]]}\n"
+        core_component_codes += f"\n## File Content:\n```{EXTENSION_TO_LANGUAGE.get('.'+path.split('.')[-1], 'text')}\n"
         
         # Read content of the file using the first component's file path
         try:

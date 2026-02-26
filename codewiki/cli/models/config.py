@@ -118,6 +118,7 @@ class Configuration:
         max_token_per_leaf_module: Maximum tokens per leaf module (default: 16000)
         max_depth: Maximum depth for hierarchical decomposition (default: 2)
         agent_instructions: Custom agent instructions for documentation generation
+        api_key: Optional API key stored in config file (fallback when keychain unavailable)
     """
     base_url: str
     main_model: str
@@ -129,6 +130,7 @@ class Configuration:
     max_token_per_leaf_module: int = 16000
     max_depth: int = 2
     agent_instructions: AgentInstructions = field(default_factory=AgentInstructions)
+    api_key: Optional[str] = None  # Fallback when keychain is unavailable
     
     def validate(self):
         """
@@ -154,6 +156,8 @@ class Configuration:
             'max_token_per_leaf_module': self.max_token_per_leaf_module,
             'max_depth': self.max_depth,
         }
+        if self.api_key:
+            result['api_key'] = self.api_key
         if self.agent_instructions and not self.agent_instructions.is_empty():
             result['agent_instructions'] = self.agent_instructions.to_dict()
         return result
@@ -184,6 +188,7 @@ class Configuration:
             max_token_per_leaf_module=data.get('max_token_per_leaf_module', 16000),
             max_depth=data.get('max_depth', 2),
             agent_instructions=agent_instructions,
+            api_key=data.get('api_key'),
         )
     
     def is_complete(self) -> bool:

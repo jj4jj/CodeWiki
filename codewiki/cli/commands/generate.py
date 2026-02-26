@@ -44,8 +44,8 @@ def parse_patterns(patterns_str: str) -> List[str]:
     "--output",
     "-o",
     type=click.Path(),
-    default="docs",
-    help="Output directory for generated documentation (default: ./docs)",
+    default="docs/codewiki",
+    help="Output directory for generated documentation (default: ./docs/codewiki)",
 )
 @click.option(
     "--create-branch",
@@ -126,6 +126,17 @@ def parse_patterns(patterns_str: str) -> List[str]:
     default=None,
     help="Maximum depth for hierarchical decomposition (overrides config)",
 )
+@click.option(
+    "--output-lang",
+    "-l",
+    type=str,
+    default=None,
+    help=(
+        "Translate generated docs into this language after generation "
+        "(e.g. 'zh' for Chinese, 'ja' for Japanese). "
+        "Output is written to <output-dir>/<lang>/ with the same file structure."
+    ),
+)
 @click.pass_context
 def generate_command(
     ctx,
@@ -142,7 +153,8 @@ def generate_command(
     max_tokens: Optional[int],
     max_token_per_module: Optional[int],
     max_token_per_leaf_module: Optional[int],
-    max_depth: Optional[int]
+    max_depth: Optional[int],
+    output_lang: Optional[str],
 ):
     """
     Generate comprehensive documentation for a code repository.
@@ -157,8 +169,12 @@ def generate_command(
     $ codewiki generate
     
     \b
-    # With git branch creation and GitHub Pages
-    $ codewiki generate --create-branch --github-pages
+    # Custom output directory
+    $ codewiki generate --output-dir /path/to/my/docs
+
+    \b
+    # Short form also works
+    $ codewiki generate -o /path/to/my/docs
     
     \b
     # Force full regeneration
@@ -187,6 +203,14 @@ def generate_command(
     \b
     # Override max depth for hierarchical decomposition
     $ codewiki generate --max-depth 3
+
+    \b
+    # Generate docs and also produce a Chinese translation in docs/zh/
+    $ codewiki generate --output-lang zh
+
+    \b
+    # Any BCP-47 / common lang code is accepted: zh, zh-tw, ja, ko, fr, de, es …
+    $ codewiki generate --output-lang ja
     """
     logger = create_logger(verbose=verbose)
     start_time = time.time()
@@ -198,14 +222,15 @@ def generate_command(
         # Pre-generation checks
         logger.step("Validating configuration...", 1, 4)
         
-        # Load configuration
+        # Load configuration (support env-var-only mode)
         config_manager = ConfigManager()
-        if not config_manager.load():
+        if not config_manager.load_or_env():
             raise ConfigurationError(
                 "Configuration not found or invalid.\n\n"
-                "Please run 'codewiki config set' to configure your LLM API credentials:\n"
-                "  codewiki config set --api-key <your-api-key> --base-url <api-url> \\\n"
-                "    --main-model <model> --cluster-model <model>\n\n"
+                "Please run 'codewiki config set' or set environment variables:\n"
+                f"  export CODEWIKI_API_KEY=<key>\n"
+                f"  export CODEWIKI_BASE_URL=<url>\n"
+                f"  export CODEWIKI_MAIN_MODEL=<model>\n\n"
                 "For more help: codewiki config --help"
             )
         
@@ -290,7 +315,7 @@ def generate_command(
             create_branch=create_branch,
             github_pages=github_pages,
             no_cache=no_cache,
-            custom_output=output if output != "docs" else None
+            custom_output=output if output != "docs/codewiki" else None
         )
         
         # Create runtime agent instructions from CLI options
@@ -366,6 +391,41 @@ def generate_command(
         
         # Run generation
         job = generator.generate()
+        
+        # Optional: Translation post-generation step
+        if output_lang:
+            click.echo()
+            lang_label = output_lang.upper()
+            click.secho(f"[5/5] Translation ({lang_label})", fg="blue")
+            
+            from codewiki.cli.adapters.translator import DocTranslator, LANGUAGE_NAMES
+            lang_name = LANGUAGE_NAMES.get(output_lang.lower(), output_lang)
+            click.echo(f"      Translating to {lang_name} …")
+            
+            translator = DocTranslator(config={
+                'base_url': config.base_url,
+                'api_key': api_key,
+                'main_model': config.main_model,
+                'cluster_model': config.cluster_model,
+                'fallback_model': config.fallback_model,
+                'max_tokens': max_tokens if max_tokens is not None else config.max_tokens,
+                'max_token_per_module': max_token_per_module if max_token_per_module is not None else config.max_token_per_module,
+                'max_token_per_leaf_module': max_token_per_leaf_module if max_token_per_leaf_module is not None else config.max_token_per_leaf_module,
+                'max_depth': max_depth if max_depth is not None else config.max_depth,
+            })
+
+            md_files = list(output_dir.glob("*.md"))
+            total_files = len(md_files)
+
+            def _progress(current, total, filename):
+                click.echo(f"      [{current}/{total}] {filename}")
+
+            translated_dir = translator.translate_docs(
+                output_dir=output_dir,
+                lang_code=output_lang,
+                progress_callback=_progress,
+            )
+            click.secho(f"\n✓ Translation complete → {translated_dir}", fg="green")
         
         # Post-generation
         generation_time = time.time() - start_time

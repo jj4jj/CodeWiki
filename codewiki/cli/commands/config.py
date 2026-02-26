@@ -3,11 +3,16 @@ Configuration commands for CodeWiki CLI.
 """
 
 import json
+import os
 import sys
 import click
 from typing import Optional, List
 
-from codewiki.cli.config_manager import ConfigManager
+from codewiki.cli.config_manager import (
+    ConfigManager,
+    CONFIG_FILE,
+    ENV_API_KEY, ENV_BASE_URL, ENV_MAIN_MODEL, ENV_CLUSTER_MODEL, ENV_FALLBACK_MODEL,
+)
 from codewiki.cli.models.config import AgentInstructions
 from codewiki.cli.utils.errors import (
     ConfigurationError, 
@@ -41,27 +46,40 @@ def config_group():
 @click.option(
     "--api-key",
     type=str,
-    help="LLM API key (stored securely in system keychain)"
+    help=(
+        "LLM API key. Stored in system keychain if available, "
+        "otherwise saved in ~/.codewiki/config.json. "
+        "Can also be set via CODEWIKI_API_KEY env var."
+    )
 )
 @click.option(
     "--base-url",
     type=str,
-    help="LLM API base URL (e.g., https://api.anthropic.com)"
+    help="LLM API base URL (e.g., https://api.deepseek.com). Env: CODEWIKI_BASE_URL"
 )
 @click.option(
     "--main-model",
     type=str,
-    help="Primary model for documentation generation"
+    help="Primary model for documentation generation. Env: CODEWIKI_MAIN_MODEL"
 )
 @click.option(
     "--cluster-model",
     type=str,
-    help="Model for module clustering (recommend top-tier)"
+    help="Model for module clustering (recommend top-tier). Env: CODEWIKI_CLUSTER_MODEL"
 )
 @click.option(
     "--fallback-model",
     type=str,
-    help="Fallback model for documentation generation"
+    help="Fallback model for documentation generation. Env: CODEWIKI_FALLBACK_MODEL"
+)
+@click.option(
+    "--save-key-to-file",
+    is_flag=True,
+    default=False,
+    help=(
+        "Force API key to be saved in ~/.codewiki/config.json "
+        "instead of the system keychain. Useful in CI or headless environments."
+    ),
 )
 @click.option(
     "--max-tokens",
@@ -92,38 +110,43 @@ def config_set(
     max_tokens: Optional[int],
     max_token_per_module: Optional[int],
     max_token_per_leaf_module: Optional[int],
-    max_depth: Optional[int]
+    max_depth: Optional[int],
+    save_key_to_file: bool,
 ):
     """
     Set configuration values for CodeWiki.
     
-    API keys are stored securely in your system keychain:
-      • macOS: Keychain Access
-      • Windows: Credential Manager  
-      • Linux: Secret Service (GNOME Keyring, KWallet)
+    API keys are resolved in priority order:
+      1. Environment variable  CODEWIKI_API_KEY
+      2. Config file           ~/.codewiki/config.json  (api_key field)
+      3. System keychain       (macOS Keychain / GNOME Keyring / KWallet)
+    
+    Other overridable env vars:
+      CODEWIKI_BASE_URL, CODEWIKI_MAIN_MODEL,
+      CODEWIKI_CLUSTER_MODEL, CODEWIKI_FALLBACK_MODEL
     
     Examples:
     
     \b
-    # Set all configuration
-    $ codewiki config set --api-key sk-abc123 --base-url https://api.anthropic.com \\
-        --main-model claude-sonnet-4 --cluster-model claude-sonnet-4 --fallback-model glm-4p5
+    # Set via CLI (stores to keychain or config file)
+    $ codewiki config set --api-key sk-abc123 --base-url https://api.deepseek.com \\
+        --main-model deepseek-chat --cluster-model deepseek-chat --fallback-model deepseek-chat
     
     \b
-    # Update only API key
-    $ codewiki config set --api-key sk-new-key
+    # Use environment variables instead (no config set needed)
+    $ export CODEWIKI_API_KEY=sk-abc123
+    $ export CODEWIKI_BASE_URL=https://api.deepseek.com
+    $ export CODEWIKI_MAIN_MODEL=deepseek-chat
+    $ export CODEWIKI_CLUSTER_MODEL=deepseek-chat
+    $ codewiki generate
     
     \b
-    # Set max tokens for LLM response
-    $ codewiki config set --max-tokens 16384
-    
+    # Update only max tokens
+    $ codewiki config set --max-tokens 4096
+
     \b
-    # Set all max token settings
-    $ codewiki config set --max-tokens 32768 --max-token-per-module 40000 --max-token-per-leaf-module 20000
-    
-    \b
-    # Set max depth for hierarchical decomposition
-    $ codewiki config set --max-depth 3
+    # Force API key into config file (no keychain)
+    $ codewiki config set --api-key sk-xxx --save-key-to-file
     """
     try:
         # Check if at least one option is provided
@@ -182,17 +205,20 @@ def config_set(
             max_tokens=validated_data.get('max_tokens'),
             max_token_per_module=validated_data.get('max_token_per_module'),
             max_token_per_leaf_module=validated_data.get('max_token_per_leaf_module'),
-            max_depth=validated_data.get('max_depth')
+            max_depth=validated_data.get('max_depth'),
+            force_key_to_file=save_key_to_file,
         )
         
         # Display success messages
         click.echo()
         if api_key:
-            if manager.keyring_available:
+            if save_key_to_file:
+                click.secho("✓ API key saved to config file (~/.codewiki/config.json)", fg="green")
+            elif manager.keyring_available:
                 click.secho("✓ API key saved to system keychain", fg="green")
             else:
                 click.secho(
-                    "⚠️  System keychain unavailable. API key stored in encrypted file.",
+                    "⚠️  System keychain unavailable. API key saved to config file (~/.codewiki/config.json).",
                     fg="yellow"
                 )
         
@@ -266,11 +292,13 @@ def config_show(output_json: bool):
     try:
         manager = ConfigManager()
         
-        if not manager.load():
+        if not manager.load_or_env():
             click.secho("\n✗ Configuration not found.", fg="red", err=True)
-            click.echo("\nPlease run 'codewiki config set' to configure your API credentials:")
-            click.echo("  codewiki config set --api-key <key> --base-url <url> \\")
-            click.echo("    --main-model <model> --cluster-model <model> --fallback-model <model>")
+            click.echo("\nPlease run 'codewiki config set' or set environment variables:")
+            click.echo(f"  export {ENV_API_KEY}=<your-api-key>")
+            click.echo(f"  export {ENV_BASE_URL}=<api-url>")
+            click.echo(f"  export {ENV_MAIN_MODEL}=<model>")
+            click.echo(f"  export {ENV_CLUSTER_MODEL}=<model>")
             click.echo("\nFor more help: codewiki config set --help")
             sys.exit(EXIT_CONFIG_ERROR)
         
@@ -304,18 +332,26 @@ def config_show(output_json: bool):
             
             click.secho("Credentials", fg="cyan", bold=True)
             if api_key:
-                storage = "system keychain" if manager.keyring_available else "encrypted file"
-                click.echo(f"  API Key:          {mask_api_key(api_key)} (in {storage})")
+                # Show source of the api key
+                if os.environ.get(ENV_API_KEY):
+                    source = "env var (CODEWIKI_API_KEY)"
+                elif manager.keyring_available:
+                    source = "system keychain"
+                else:
+                    source = "config file"
+                click.echo(f"  API Key:          {mask_api_key(api_key)} ({source})")
             else:
                 click.secho("  API Key:          Not set", fg="yellow")
             
             click.echo()
             click.secho("API Settings", fg="cyan", bold=True)
             if config:
-                click.echo(f"  Base URL:         {config.base_url or 'Not set'}")
-                click.echo(f"  Main Model:       {config.main_model or 'Not set'}")
-                click.echo(f"  Cluster Model:    {config.cluster_model or 'Not set'}")
-                click.echo(f"  Fallback Model:   {config.fallback_model or 'Not set'}")
+                def _src(env_var, val):
+                    return f"{val}  [env]" if os.environ.get(env_var) else val
+                click.echo(f"  Base URL:         {_src(ENV_BASE_URL, config.base_url or 'Not set')}")
+                click.echo(f"  Main Model:       {_src(ENV_MAIN_MODEL, config.main_model or 'Not set')}")
+                click.echo(f"  Cluster Model:    {_src(ENV_CLUSTER_MODEL, config.cluster_model or 'Not set')}")
+                click.echo(f"  Fallback Model:   {_src(ENV_FALLBACK_MODEL, config.fallback_model or 'Not set')}")
             else:
                 click.secho("  Not configured", fg="yellow")
             
@@ -404,20 +440,28 @@ def config_validate(quick: bool, verbose: bool):
         
         manager = ConfigManager()
         
-        # Step 1: Check config file
+        # Step 1: Check config file or env vars
         if verbose:
-            click.echo("[1/5] Checking configuration file...")
-            click.echo(f"      Path: {manager.config_file_path}")
+            click.echo("[1/5] Checking configuration source...")
+            click.echo(f"      Config file: {manager.config_file_path}")
         
-        if not manager.load():
-            click.secho("✗ Configuration file not found", fg="red")
+        file_loaded = CONFIG_FILE.exists() and manager.load()
+        env_complete = manager._env_only_config() is not None
+        
+        if not file_loaded and not env_complete:
+            click.secho("✗ Configuration file not found and no env vars set", fg="red")
             click.echo()
-            click.echo("Error: Configuration is incomplete. Run 'codewiki config set --help' for setup instructions.")
+            click.echo(f"  Set env vars: {ENV_API_KEY}, {ENV_BASE_URL}, {ENV_MAIN_MODEL}, {ENV_CLUSTER_MODEL}")
+            click.echo("  Or run: codewiki config set --help")
             sys.exit(EXIT_CONFIG_ERROR)
         
+        if not file_loaded and env_complete:
+            # Env-var-only mode: synthesize config from env
+            manager._config = manager._env_only_config()
+        
         if verbose:
-            click.secho("      ✓ File exists", fg="green")
-            click.secho("      ✓ Valid JSON format", fg="green")
+            src = "env vars" if not file_loaded else "config file"
+            click.secho(f"      ✓ Config source: {src}", fg="green")
         else:
             click.secho("✓ Configuration file exists", fg="green")
         
@@ -432,14 +476,16 @@ def config_validate(quick: bool, verbose: bool):
         if not api_key:
             click.secho("✗ API key missing", fg="red")
             click.echo()
-            click.echo("Error: API key not set. Run 'codewiki config set --api-key <key>'")
+            click.echo(f"Error: API key not set. Run 'codewiki config set --api-key <key>' or set {ENV_API_KEY} env var.")
             sys.exit(EXIT_CONFIG_ERROR)
         
         if verbose:
-            click.secho(f"      ✓ API key retrieved", fg="green")
+            src = f"env ({ENV_API_KEY})" if os.environ.get(ENV_API_KEY) else ("keychain" if manager.keyring_available else "config file")
+            click.secho(f"      ✓ API key retrieved (source: {src})", fg="green")
             click.secho(f"      ✓ Length: {len(api_key)} characters", fg="green")
         else:
-            click.secho("✓ API key present (stored in keychain)", fg="green")
+            src = f"env var" if os.environ.get(ENV_API_KEY) else ("keychain" if manager.keyring_available else "config file")
+            click.secho(f"✓ API key present (source: {src})", fg="green")
         
         # Step 3: Check base URL
         config = manager.get_config()
