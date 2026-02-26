@@ -50,7 +50,17 @@ codewiki config set \
   --base-url https://api.anthropic.com \
   --main-model claude-sonnet-4 \
   --cluster-model claude-sonnet-4 \
-  --fallback-model glm-4p5
+  --fallback-models claude-sonnet-4,gpt-4o
+```
+
+You can also use **environment variables** or store the API key directly in `~/.codewiki/config.json`:
+
+```bash
+# Environment variables (highest priority)
+export CODEWIKI_API_KEY=sk-...
+export CODEWIKI_BASE_URL=https://api.openai.com/v1
+export CODEWIKI_MAIN_MODEL=gpt-4o
+export CODEWIKI_CLUSTER_MODEL=gpt-4o
 ```
 
 ### 3. Generate Documentation
@@ -66,7 +76,7 @@ codewiki generate
 codewiki generate --github-pages --create-branch
 ```
 
-**That's it!** Your documentation will be generated in `./docs/` with comprehensive repository-level analysis.
+**That's it!** Your documentation will be generated in `./docs/codewiki/` with comprehensive repository-level analysis.
 
 ### Usage Example
 
@@ -88,7 +98,7 @@ CodeWiki is an open-source framework for **automated repository-level documentat
 
 ### Supported Languages
 
-**🐍 Python** • **☕ Java** • **🟨 JavaScript** • **🔷 TypeScript** • **⚙️ C** • **🔧 C++** • **🪟 C#**
+**🐍 Python** • **☕ Java** • **🟨 JavaScript** • **🔷 TypeScript** • **⚙️ C** • **🔧 C++** • **🪟 C#** • **🐹 Go**
 
 ---
 
@@ -103,7 +113,7 @@ codewiki config set \
   --base-url <provider-url> \
   --main-model <model-name> \
   --cluster-model <model-name> \
-  --fallback-model <model-name>
+  --fallback-models <model1,model2,...>
 
 # Configure max token settings
 codewiki config set --max-tokens 32768 --max-token-per-module 36369 --max-token-per-leaf-module 16000
@@ -114,8 +124,11 @@ codewiki config set --max-depth 3
 # Show current configuration
 codewiki config show
 
-# Validate your configuration
+# Validate your configuration (tests API connectivity)
 codewiki config validate
+
+# Quick validation (skip API connectivity test)
+codewiki config validate --quick
 ```
 
 ### Documentation Generation
@@ -138,6 +151,68 @@ codewiki generate --verbose
 
 # Full-featured generation
 codewiki generate --create-branch --github-pages --verbose
+```
+
+### CLI Agent Mode
+
+Bypass LLM API context window limits by routing prompts through a **CLI agent subprocess** (e.g. Claude Code, OpenCode):
+
+```bash
+# Use Claude CLI as the generation backend (no context window limits!)
+codewiki generate --with-agent-cmd "claude --dangerously-skip-permissions -p"
+
+# Combine with parallel processing for speed
+codewiki generate \
+  --with-agent-cmd "claude --dangerously-skip-permissions -p" \
+  -j 4
+```
+
+The prompt is piped via **stdin**, and the agent's **stdout** is captured as the documentation. This completely bypasses API gateway timeouts and context window constraints.
+
+### Multi-Language Translation
+
+Generate documentation and translate into another language:
+
+```bash
+# Generate docs + Chinese translation
+codewiki generate --output-lang zh
+
+# Generate docs + Japanese translation
+codewiki generate --output-lang ja
+
+# Any BCP-47 / common lang code: zh, zh-tw, ja, ko, fr, de, es …
+codewiki generate --output-lang fr
+```
+
+Translated output is written to `<output-dir>/<lang>/` with the same file structure.
+
+### Parallel Processing
+
+Leaf modules are independent and safe to process in parallel:
+
+```bash
+# Default: 4 parallel workers
+codewiki generate
+
+# Increase parallelism
+codewiki generate -j 8
+
+# Serial mode (if hitting API rate limits)
+codewiki generate -j 1
+```
+
+### Checkpoint & Resume
+
+If generation is interrupted, simply re-run the same command. CodeWiki detects existing `.md` files and **resumes from where it left off**:
+
+```bash
+# First run (interrupted mid-way)
+codewiki generate --with-agent-cmd "claude -p"
+# ^C  (Ctrl-C)
+
+# Re-run: automatically resumes from last checkpoint
+codewiki generate --with-agent-cmd "claude -p"
+# Choose [r] Resume when prompted
 ```
 
 ### Viewing Documentation on the Web
@@ -310,10 +385,20 @@ codewiki generate --max-tokens 16384 --max-token-per-module 40000 --max-depth 3
 | `--max-token-per-leaf-module` | Input tokens threshold for leaf modules | 16000 |
 | `--max-depth` | Maximum depth for hierarchical decomposition | 2 |
 
-### Configuration Storage
+### Configuration Storage & Priority
 
-- **API keys**: Securely stored in system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- **Settings & Agent Instructions**: `~/.codewiki/config.json`
+**API key resolution order** (highest → lowest):
+
+1. `CODEWIKI_API_KEY` environment variable
+2. `api_key` field in `~/.codewiki/config.json`
+3. System keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+
+| Source | Where | Notes |
+|--------|-------|-------|
+| Environment variables | Shell / CI | Highest priority, `CODEWIKI_API_KEY`, `CODEWIKI_BASE_URL`, `CODEWIKI_MAIN_MODEL`, `CODEWIKI_CLUSTER_MODEL` |
+| Config file | `~/.codewiki/config.json` | Editable directly, supports `api_key` field |
+| System keychain | OS keychain | Set via `codewiki config set --api-key` |
+| Config file (forced) | `~/.codewiki/config.json` | `codewiki config set --api-key KEY --save-key-to-file` |
 
 ---
 
@@ -336,14 +421,17 @@ Generated documentation includes both **textual descriptions** and **visual arti
 ### Output Structure
 
 ```
-./docs/
+./docs/codewiki/
 ├── overview.md              # Repository overview (start here!)
 ├── module1.md               # Module documentation
 ├── module2.md               # Additional modules...
 ├── module_tree.json         # Hierarchical module structure
 ├── first_module_tree.json   # Initial clustering result
 ├── metadata.json            # Generation metadata
-└── index.html               # Interactive viewer (with --github-pages)
+├── index.html               # Interactive viewer (with --github-pages)
+└── zh/                      # Translation output (with --output-lang zh)
+    ├── overview.md
+    └── ...
 ```
 
 ---
