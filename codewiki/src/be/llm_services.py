@@ -63,11 +63,12 @@ def create_fallback_models(config: Config) -> FallbackModel:
     return FallbackModel(main, *extras)
 
 
-def create_openai_client(config: Config) -> OpenAI:
+def create_openai_client(config: Config, timeout: int = 300) -> OpenAI:
     """Create OpenAI client from configuration."""
     return OpenAI(
         base_url=config.llm_base_url,
-        api_key=config.llm_api_key
+        api_key=config.llm_api_key,
+        timeout=timeout,
     )
 
 
@@ -75,7 +76,8 @@ def call_llm(
     prompt: str,
     config: Config,
     model: str = None,
-    temperature: float = 0.0
+    temperature: float = 0.0,
+    timeout: int = 300,
 ) -> str:
     """
     Call LLM with the given prompt.
@@ -92,7 +94,7 @@ def call_llm(
     if model is None:
         model = config.main_model
 
-    client = create_openai_client(config)
+    client = create_openai_client(config, timeout=timeout)
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],

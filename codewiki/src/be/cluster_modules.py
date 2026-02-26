@@ -59,7 +59,19 @@ def cluster_modules(
         return {}
 
     prompt = format_cluster_prompt(potential_core_components, current_module_tree, current_module_name)
-    response = call_llm(prompt, config, model=config.cluster_model)
+
+    agent_cmd = getattr(config, 'agent_cmd', '')
+    if agent_cmd:
+        # Use CLI agent subprocess — bypasses API gateway timeout entirely
+        from codewiki.src.be.cmd_agent import run_agent_cmd
+        clustering_prompt = (
+            prompt
+            + "\n\nIMPORTANT: Return ONLY the <GROUPED_COMPONENTS>...</GROUPED_COMPONENTS> block. "
+            "No preamble, no explanation — just the tags and the JSON dict inside them."
+        )
+        response = run_agent_cmd(agent_cmd, clustering_prompt)
+    else:
+        response = call_llm(prompt, config, model=config.cluster_model)
 
     #parse the response
     try:
