@@ -10,10 +10,13 @@ on metadata continues to work.
 """
 
 import os
+import sys
 import shutil
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,12 @@ class DocTranslator:
     """
     Translates generated markdown documentation into another language using
     the same LLM and credentials used for documentation generation.
+
+    Translation cascade (first success wins):
+    1. CLI agent subprocess (--with-agent-cmd) — no timeout / context limits
+    2. Main model via API
+    3. Fallback models via API
+    4. Error → stop
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -59,8 +68,11 @@ class DocTranslator:
         Args:
             config: Same dict passed to CLIDocumentationGenerator
                     (must contain base_url, api_key, main_model, max_tokens).
+                    Optional: agent_cmd, fallback_models.
         """
         self.config = config
+        self.agent_cmd: str = config.get("agent_cmd", "")
+        self.fallback_models: List[str] = config.get("fallback_models", [])
         self._backend_config = None
 
     def _get_backend_config(self):
@@ -82,33 +94,85 @@ class DocTranslator:
             )
         return self._backend_config
 
-    def _translate_content(self, content: str, lang_code: str) -> str:
-        """Translate a single markdown string via the LLM."""
-        from codewiki.src.be.llm_services import call_llm
+    def _translate_content(self, content: str, lang_code: str, filename: str = "") -> str:
+        """
+        Translate a single markdown string.
+
+        Cascade order:
+        1. agent_cmd (if set)
+        2. main_model via API (timeout=300s) 
+        3. each fallback model via API
+        4. raise on total failure
+        """
         language_name = LANGUAGE_NAMES.get(lang_code.lower(), lang_code)
         prompt = TRANSLATION_PROMPT.format(
             language_name=language_name,
             content=content,
         )
-        return call_llm(prompt, self._get_backend_config())
+        errors: List[str] = []
+
+        # -- 1. CLI agent subprocess --
+        if self.agent_cmd:
+            try:
+                from codewiki.src.be.cmd_agent import run_agent_cmd
+                result = run_agent_cmd(self.agent_cmd, prompt)
+                if result and result.strip():
+                    return result
+                errors.append("agent_cmd returned empty output")
+            except Exception as e:
+                errors.append(f"agent_cmd: {e}")
+                logger.warning(f"  agent_cmd failed for {filename}: {e}")
+
+        # -- 2. Main model via API --
+        try:
+            from codewiki.src.be.llm_services import call_llm
+            return call_llm(prompt, self._get_backend_config(), timeout=300)
+        except Exception as e:
+            errors.append(f"main_model ({self.config.get('main_model')}): {e}")
+            logger.warning(f"  main_model failed for {filename}: {e}")
+
+        # -- 3. Fallback models --
+        for fb_model in self.fallback_models:
+            try:
+                from codewiki.src.be.llm_services import call_llm
+                return call_llm(
+                    prompt, self._get_backend_config(),
+                    model=fb_model, timeout=300,
+                )
+            except Exception as e:
+                errors.append(f"fallback ({fb_model}): {e}")
+                logger.warning(f"  fallback {fb_model} failed for {filename}: {e}")
+
+        # -- All failed --
+        all_errors = "\n    ".join(errors)
+        raise RuntimeError(
+            f"Translation failed for {filename}. All backends exhausted:\n    {all_errors}"
+        )
 
     def translate_docs(
         self,
         output_dir: Path,
         lang_code: str,
         progress_callback=None,
+        concurrency: int = 4,
     ) -> Path:
         """
         Translate all .md files in *output_dir* into *lang_code* and write
         results to *output_dir/<lang_code>/*.
 
+        Stops on first unrecoverable translation failure.
+
         Args:
             output_dir:        Root docs directory (e.g. /tmp/bifrost/docs)
             lang_code:         Target language code (e.g. 'zh', 'ja')
             progress_callback: Optional callable(current, total, filename)
+            concurrency:       Number of parallel translation workers (default 4)
 
         Returns:
             Path to the translated output directory.
+
+        Raises:
+            RuntimeError: If any file fails to translate after all fallbacks.
         """
         lang_dir = output_dir / lang_code
         lang_dir.mkdir(parents=True, exist_ok=True)
@@ -117,23 +181,47 @@ class DocTranslator:
         md_files: List[Path] = sorted(output_dir.glob("*.md"))
         total = len(md_files)
 
-        logger.info(f"Translating {total} markdown files → {lang_dir}")
+        logger.info(f"Translating {total} markdown files -> {lang_dir} (concurrency={concurrency})")
 
-        for idx, md_path in enumerate(md_files, 1):
+        # Thread-safe progress counter
+        progress_lock = threading.Lock()
+        progress_counter = [0]
+
+        def _translate_one(md_path: Path) -> None:
+            """Translate a single file (runs inside a thread)."""
+            dest = lang_dir / md_path.name
+
+            # Skip already-translated files (checkpoint resume)
+            if dest.exists():
+                with progress_lock:
+                    progress_counter[0] += 1
+                    idx = progress_counter[0]
+                if progress_callback:
+                    progress_callback(idx, total, f"\u21a9 {md_path.name} (skip)")
+                return
+
+            with progress_lock:
+                progress_counter[0] += 1
+                idx = progress_counter[0]
             if progress_callback:
                 progress_callback(idx, total, md_path.name)
 
-            logger.info(f"  [{idx}/{total}] {md_path.name} → {lang_code}/{md_path.name}")
+            content = md_path.read_text(encoding="utf-8")
+            translated = self._translate_content(content, lang_code, md_path.name)
+            dest.write_text(translated, encoding="utf-8")
 
-            try:
-                content = md_path.read_text(encoding="utf-8")
-                translated = self._translate_content(content, lang_code)
-                dest = lang_dir / md_path.name
-                dest.write_text(translated, encoding="utf-8")
-            except Exception as e:
-                logger.error(f"  Failed to translate {md_path.name}: {e}")
-                # Copy original as fallback
-                shutil.copy2(md_path, lang_dir / md_path.name)
+        # Run translations in parallel
+        workers = max(1, min(concurrency, total))
+        if workers == 1:
+            # Serial path — no thread overhead
+            for md_path in md_files:
+                _translate_one(md_path)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_translate_one, p): p for p in md_files}
+                for future in as_completed(futures):
+                    # Re-raise any translation error immediately
+                    future.result()
 
         # Copy non-markdown artefacts (JSON metadata, etc.) unchanged
         for other in output_dir.iterdir():

@@ -465,6 +465,8 @@ def generate_command(
                 'main_model': config.main_model,
                 'cluster_model': config.cluster_model,
                 'fallback_model': config.fallback_model,
+                'fallback_models': config.fallback_models if hasattr(config, 'fallback_models') else [],
+                'agent_cmd': agent_cmd or '',
                 'max_tokens': max_tokens if max_tokens is not None else config.max_tokens,
                 'max_token_per_module': max_token_per_module if max_token_per_module is not None else config.max_token_per_module,
                 'max_token_per_leaf_module': max_token_per_leaf_module if max_token_per_leaf_module is not None else config.max_token_per_leaf_module,
@@ -477,12 +479,18 @@ def generate_command(
             def _progress(current, total, filename):
                 click.echo(f"      [{current}/{total}] {filename}")
 
-            translated_dir = translator.translate_docs(
-                output_dir=output_dir,
-                lang_code=output_lang,
-                progress_callback=_progress,
-            )
-            click.secho(f"\n✓ Translation complete → {translated_dir}", fg="green")
+            try:
+                translated_dir = translator.translate_docs(
+                    output_dir=output_dir,
+                    lang_code=output_lang,
+                    progress_callback=_progress,
+                    concurrency=max(1, concurrency),
+                )
+                click.secho(f"\n✓ Translation complete → {translated_dir}", fg="green")
+            except RuntimeError as e:
+                click.secho(f"\n✗ Translation failed", fg="red")
+                click.secho(f"  {e}", fg="red")
+                sys.exit(EXIT_CONFIG_ERROR)
         
         # Post-generation
         generation_time = time.time() - start_time
