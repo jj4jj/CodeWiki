@@ -152,7 +152,7 @@ codewiki generate \
   --with-agent-cmd "claude --dangerously-skip-permissions -p" \
   --github-pages \
   --output-lang zh \
-  --create-branch  \
+  --create-branch \
   -j 4
 ```
 
