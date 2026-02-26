@@ -150,6 +150,9 @@ codewiki generate --with-agent-cmd "claude --dangerously-skip-permissions -p"
 # 搭配并行处理加速
 codewiki generate \
   --with-agent-cmd "claude --dangerously-skip-permissions -p" \
+  --github-pages \
+  --output-lang zh \
+  --create-branch  \
   -j 4
 ```
 
