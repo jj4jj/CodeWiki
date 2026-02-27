@@ -26,6 +26,10 @@
   <img src="./img/framework-overview.png" alt="CodeWiki Framework" width="600" style="border: 2px solid #e1e4e8; border-radius: 12px; padding: 20px;"/>
 </p>
 
+> [!NOTE]
+> **This is an enhanced fork of the original [FSoft-AI4Code/CodeWiki](https://github.com/FSoft-AI4Code/CodeWiki).**  
+> We have added significant new features to improve generation speed, bypass LLM API constraints, and support multi-language documentation mapping. See [✨ Features in this Fork](#-features-in-this-fork) below for details.
+
 ---
 
 ## Quick Start
@@ -98,7 +102,19 @@ CodeWiki is an open-source framework for **automated repository-level documentat
 
 ### Supported Languages
 
-**🐍 Python** • **☕ Java** • **🟨 JavaScript** • **🔷 TypeScript** • **⚙️ C** • **🔧 C++** • **🪟 C#** • **🐹 Go**
+**🐍 Python** • **☕ Java** • **🟨 JavaScript** • **🔷 TypeScript** • **⚙️ C** • **🔧 C++** • **🪟 C#** • **🐹 Go** *(Added in this fork)*
+
+---
+
+## ✨ Features in this Fork
+
+This fork significantly extends the original CodeWiki project with tools focused on developer ergonomics, scale, and internationalization:
+
+- **🤖 CLI Agent Execution Mode (`--with-agent-cmd`)**: Bypasses strict API context window limitations and gateway timeouts by piping LLM prompts directly through CLI agents (e.g., Claude Code, OpenCode).
+- **⚡ Parallel Processing (`-j`)**: Dramatically speeds up documentation generation by parsing and generating independent leaf modules in parallel.
+- **🌍 Multi-Language Translation (`--output-lang`)**: Seamlessly translates the generated Markdown documentation into any BCP-47 language code (e.g., `zh`, `ja`, `es`) while maintaining the identical folder structure.
+- **🌐 Dynamic GitHub Pages Viewer**: The generated `index.html` viewer now includes a built-in dropdown to dynamically switch between documentation languages on the fly without duplicating HTML files.
+- **🐹 Golang Support**: Integrated native AST parsing and dependency analysis for Go (`.go`) projects.
 
 ---
 
