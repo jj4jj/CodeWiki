@@ -53,7 +53,7 @@ codewiki/
 
 ```bash
 # Clone the repository
-git clone https://github.com/FSoft-AI4Code/CodeWiki.git
+git clone https://github.com/jj4jj/CodeDoc.git
 cd CodeWiki
 
 # Create virtual environment
@@ -292,6 +292,6 @@ export CODEWIKI_LOG_LEVEL=DEBUG
 ## Support
 
 For development questions:
-- GitHub Issues: https://github.com/FSoft-AI4Code/CodeWiki/issues
+- GitHub Issues: https://github.com/jj4jj/CodeDoc/issues
 - Main Documentation: [README.md](README.md)
 
