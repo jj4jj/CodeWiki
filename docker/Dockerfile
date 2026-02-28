@@ -12,6 +12,12 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Claude CLI (claude-code)
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Install opencode (CLI Agent)
+RUN curl -fsSL https://opencode.ai/install | bash
+
 # Copy requirements first for better caching
 COPY requirements.txt .
 

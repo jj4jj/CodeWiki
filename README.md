@@ -17,6 +17,7 @@ CodeWiki 是一个用于评估和生成大型代码库全景文档的 AI 驱动�
 - **🌍 多语言自动翻译 (`--output-lang`)**：可在生成基准文档的同时自动进行指定目标语言（如 `zh` 中文, `ja` 日文等）的全文翻译，并完整保留目录结构和图表。
 - **🌐 动态 GitHub Pages 视图集成**：为你自动生成的 `index.html` 阅览页面嵌入了原生的**语言切换下拉菜单**，无需冗余页面即可一键在英文及你的翻译语言中来回无缝切换。
 - **🐹 Golang 语言支持**：新增了核心对 Go 语言包机制的 AST 分析与依赖树提取的支持。
+- **📊 Web 文档平台与任务队列**：内置 FastAPI Web 服务，提供任务提交、排队执行、进度追踪、管理面板（带图标）、RESTful API 接口，支持从仓库 URL 自动生成标题 (`<host>/<group>/<repo>` 格式)。
 
 ---
 
@@ -314,6 +315,70 @@ export CODEWIKI_LOG_LEVEL=DEBUG
 # 验证代码稳定性，运行测试大盘
 pytest -v --cov=codewiki --cov-report=term-missing
 ```
+
+### Web 文档平台与任务队列
+
+CodeDoc 内置 FastAPI Web 服务，提供任务提交、排队执行、进度追踪、管理面板等完整功能。
+
+#### 启动 Web 服务
+
+```bash
+# 方式一：直接运行
+python codewiki/run_web_app.py --host 127.0.0.1 --port 8000
+
+# 方式二：模块方式
+python -m codewiki.run_web_app --host 0.0.0.0 --port 8000
+```
+
+服务启动后访问：
+- **首页**：http://localhost:8000/ —— 提交文档生成任务
+- **管理面板**：http://localhost:8000/admin —— 任务管理（带图标界面）
+- **文档查看**：http://localhost:8000/docs/{job_id} —— 查看生成的文档
+
+#### 功能特性
+
+| 特性 | 说明 |
+|------|------|
+| **任务队列** | 提交任务自动进入队列，后台串行执行 |
+| **自动标题** | 从仓库 URL 自动生成标题，格式：`<host>/<group>/<repo>` |
+| **进度追踪** | 实时显示任务状态（queued → processing → completed/failed） |
+| **管理面板** | 带 FontAwesome 图标的 Web 界面，支持任务查看、删除 |
+| **无认证** | 开放访问，无需登录 |
+
+#### RESTful API
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/tasks` | GET | 获取任务列表，支持 `?status_filter=` 过滤 |
+| `/api/tasks` | POST | 提交新任务，参数：`repo_url`, `commit_id`(可选), `priority`(可选) |
+| `/api/tasks/{job_id}` | DELETE | 删除指定任务 |
+| `/api/job/{job_id}` | GET | 获取单个任务状态 |
+
+**API 使用示例：**
+
+```bash
+# 提交任务
+curl -X POST "http://localhost:8000/api/tasks?repo_url=https://github.com/owner/repo"
+
+# 查询任务列表
+curl "http://localhost:8000/api/tasks"
+
+# 按状态过滤
+curl "http://localhost:8000/api/tasks?status_filter=completed"
+
+# 删除任务
+curl -X DELETE "http://localhost:8000/api/tasks/owner--repo"
+```
+
+#### 自动标题生成规则
+
+系统自动从仓库 URL 提取标题，格式为 `<host>/<group>/<repo>`：
+
+| URL 类型 | 生成标题示例 |
+|----------|-------------|
+| `https://github.com/owner/repo` | `github.com/owner/repo` |
+| `ssh://git@szgit.gs.com:36001/gsbase/gsdr.git` | `szgit.gs.com/gsbase/gsdr` |
+| `git@gitlab.com:group/subgroup/repo.git` | `gitlab.com/group/subgroup/repo` |
 
 ---
 

@@ -7,6 +7,8 @@ ssh-key
 _data
 node_modules
 
+./docs
+./output
 # Python
 .venv
 venv/
