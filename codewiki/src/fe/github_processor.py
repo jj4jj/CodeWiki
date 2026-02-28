@@ -118,6 +118,23 @@ class GitHubRepoProcessor:
         }
     
     @staticmethod
+    def generate_title(url: str) -> str:
+        """
+        Generate a title from Git repository URL in the format: <host>/<group>/<repo>
+        Examples:
+            - https://github.com/owner/repo -> github.com/owner/repo
+            - ssh://git@szgit.gs.com:36001/gsbase/gsdr.git -> szgit.gs.com/gsbase/gsdr
+            - git@gitlab.com:group/subgroup/repo.git -> gitlab.com/group/subgroup/repo
+        """
+        try:
+            repo_info = GitHubRepoProcessor.get_repo_info(url)
+            domain = repo_info.get('domain', 'unknown')
+            full_name = repo_info.get('full_name', '')
+            return f"{domain}/{full_name}"
+        except Exception:
+            return url
+    
+    @staticmethod
     def clone_repository(clone_url: str, target_dir: str, commit_id: Optional[str] = None) -> bool:
         """Clone a GitHub repository to the target directory, optionally checking out a specific commit."""
         try:

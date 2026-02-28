@@ -76,13 +76,17 @@ class BackgroundWorker:
                     self.job_status[job_id] = JobStatus(
                         job_id=job_data['job_id'],
                         repo_url=job_data['repo_url'],
+                        title=job_data.get('title', GitHubRepoProcessor.generate_title(job_data['repo_url']) if job_data.get('repo_url') else ""),
                         status=job_data['status'],
                         created_at=datetime.fromisoformat(job_data['created_at']),
                         started_at=datetime.fromisoformat(job_data['started_at']) if job_data.get('started_at') else None,
                         completed_at=datetime.fromisoformat(job_data['completed_at']) if job_data.get('completed_at') else None,
                         error_message=job_data.get('error_message'),
                         progress=job_data.get('progress', ''),
-                        docs_path=job_data.get('docs_path')
+                        docs_path=job_data.get('docs_path'),
+                        main_model=job_data.get('main_model'),
+                        commit_id=job_data.get('commit_id'),
+                        priority=job_data.get('priority', 0)
                     )
             print(f"Loaded {len([j for j in self.job_status.values() if j.status == 'completed'])} completed jobs from disk")
         except Exception as e:
@@ -106,11 +110,13 @@ class BackgroundWorker:
                         self.job_status[job_id] = JobStatus(
                             job_id=job_id,
                             repo_url=cache_entry.repo_url,
+                            title=GitHubRepoProcessor.generate_title(cache_entry.repo_url),
                             status='completed',
                             created_at=cache_entry.created_at,
                             completed_at=cache_entry.created_at,
                             docs_path=cache_entry.docs_path,
-                            progress="Reconstructed from cache"
+                            progress="Reconstructed from cache",
+                            priority=0
                         )
                         reconstructed_count += 1
                 except Exception as e:
@@ -134,13 +140,17 @@ class BackgroundWorker:
                 data[job_id] = {
                     'job_id': job.job_id,
                     'repo_url': job.repo_url,
+                    'title': job.title,
                     'status': job.status,
                     'created_at': job.created_at.isoformat(),
                     'started_at': job.started_at.isoformat() if job.started_at else None,
                     'completed_at': job.completed_at.isoformat() if job.completed_at else None,
                     'error_message': job.error_message,
                     'progress': job.progress,
-                    'docs_path': job.docs_path
+                    'docs_path': job.docs_path,
+                    'main_model': job.main_model,
+                    'commit_id': job.commit_id,
+                    'priority': job.priority
                 }
             
             file_manager.save_json(data, self.jobs_file)

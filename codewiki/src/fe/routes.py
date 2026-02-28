@@ -10,13 +10,13 @@ from dataclasses import asdict
 from traceback import format_exc
 
 from fastapi import Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from .models import JobStatus, JobStatusResponse
 from .github_processor import GitHubRepoProcessor
 from .background_worker import BackgroundWorker
 from .cache_manager import CacheManager
-from .templates import WEB_INTERFACE_TEMPLATE
+from .templates import WEB_INTERFACE_TEMPLATE, ADMIN_TEMPLATE
 from .template_utils import render_template
 from .config import WebAppConfig
 from codewiki.src.utils import file_manager
@@ -76,6 +76,7 @@ class WebRoutes:
             # Get repo info for job ID generation
             repo_info = GitHubRepoProcessor.get_repo_info(normalized_repo_url)
             job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
+            title = GitHubRepoProcessor.generate_title(normalized_repo_url)
             
             # Check if already in queue, processing, or recently failed
             existing_job = self.background_worker.get_job_status(job_id)
@@ -105,6 +106,7 @@ class WebRoutes:
                     job = JobStatus(
                         job_id=job_id,
                         repo_url=normalized_repo_url,  # Use normalized URL
+                        title=title,
                         status='completed',
                         created_at=datetime.now(),
                         completed_at=datetime.now(),
@@ -119,6 +121,7 @@ class WebRoutes:
                         job = JobStatus(
                             job_id=job_id,
                             repo_url=normalized_repo_url,  # Use normalized URL
+                            title=title,
                             status='queued',
                             created_at=datetime.now(),
                             progress="Waiting in queue...",
@@ -320,3 +323,172 @@ class WebRoutes:
         for job_id in expired_jobs:
             if job_id in self.background_worker.job_status:
                 del self.background_worker.job_status[job_id]
+    
+    async def list_tasks(self, status_filter: str = None) -> JSONResponse:
+        """API endpoint to list all tasks with optional status filter."""
+        all_jobs = self.background_worker.get_all_jobs()
+        jobs_list = []
+        
+        for job_id, job in all_jobs.items():
+            if status_filter and job.status != status_filter:
+                continue
+            jobs_list.append(JobStatusResponse(
+                job_id=job.job_id,
+                repo_url=job.repo_url,
+                title=job.title or GitHubRepoProcessor.generate_title(job.repo_url),
+                status=job.status,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                completed_at=job.completed_at,
+                error_message=job.error_message,
+                progress=job.progress,
+                docs_path=job.docs_path,
+                main_model=job.main_model,
+                commit_id=job.commit_id,
+                priority=job.priority
+            ))
+        
+        jobs_list.sort(key=lambda x: x.created_at, reverse=True)
+        return JSONResponse(content=[job.dict() for job in jobs_list])
+    
+    async def create_task_api(self, repo_url: str, commit_id: str = "", priority: int = 0) -> JSONResponse:
+        """API endpoint to create a new task."""
+        repo_url = repo_url.strip()
+        commit_id = commit_id.strip() if commit_id else ""
+        
+        if not repo_url:
+            raise HTTPException(status_code=400, detail="Repository URL is required")
+        
+        if not GitHubRepoProcessor.is_valid_github_url(repo_url):
+            raise HTTPException(status_code=400, detail="Invalid Git repository URL")
+        
+        normalized_repo_url = self._normalize_github_url(repo_url)
+        repo_info = GitHubRepoProcessor.get_repo_info(normalized_repo_url)
+        job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
+        title = GitHubRepoProcessor.generate_title(normalized_repo_url)
+        
+        existing_job = self.background_worker.get_job_status(job_id)
+        if existing_job and existing_job.status in ['queued', 'processing']:
+            raise HTTPException(status_code=409, detail="Task already exists and is in progress")
+        
+        job = JobStatus(
+            job_id=job_id,
+            repo_url=normalized_repo_url,
+            title=title,
+            status='queued',
+            created_at=datetime.now(),
+            progress="Waiting in queue...",
+            commit_id=commit_id if commit_id else None,
+            priority=priority
+        )
+        
+        self.background_worker.add_job(job_id, job)
+        
+        return JSONResponse(content={
+            "job_id": job_id,
+            "title": title,
+            "repo_url": normalized_repo_url,
+            "status": "queued",
+            "message": "Task created successfully"
+        })
+    
+    async def delete_task(self, job_id: str) -> JSONResponse:
+        """API endpoint to delete a task."""
+        job = self.background_worker.get_job_status(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        if job.status == 'processing':
+            raise HTTPException(status_code=400, detail="Cannot delete a task that is currently processing")
+        
+        if job_id in self.background_worker.job_status:
+            del self.background_worker.job_status[job_id]
+            self.background_worker.save_job_statuses()
+        
+        return JSONResponse(content={"message": "Task deleted successfully"})
+    
+    async def admin_get(self, request: Request) -> HTMLResponse:
+        """Admin page for managing tasks."""
+        all_jobs = self.background_worker.get_all_jobs()
+        jobs_list = sorted(all_jobs.values(), key=lambda x: x.created_at, reverse=True)
+        
+        queued_count = sum(1 for j in jobs_list if j.status == 'queued')
+        processing_count = sum(1 for j in jobs_list if j.status == 'processing')
+        completed_count = sum(1 for j in jobs_list if j.status == 'completed')
+        failed_count = sum(1 for j in jobs_list if j.status == 'failed')
+        
+        context = {
+            "jobs": jobs_list,
+            "queued_count": queued_count,
+            "processing_count": processing_count,
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "total_count": len(jobs_list)
+        }
+        
+        return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context))
+    
+    async def admin_post(self, request: Request, repo_url: str = Form(...), commit_id: str = Form(""), priority: int = Form(0)) -> HTMLResponse:
+        """Handle task submission from admin page."""
+        repo_url = repo_url.strip()
+        commit_id = commit_id.strip() if commit_id else ""
+        
+        if not repo_url:
+            context = {
+                "error": "Repository URL is required",
+                "jobs": self.background_worker.get_all_jobs().values()
+            }
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+        
+        if not GitHubRepoProcessor.is_valid_github_url(repo_url):
+            context = {
+                "error": "Invalid Git repository URL",
+                "jobs": self.background_worker.get_all_jobs().values()
+            }
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+        
+        normalized_repo_url = self._normalize_github_url(repo_url)
+        repo_info = GitHubRepoProcessor.get_repo_info(normalized_repo_url)
+        job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
+        title = GitHubRepoProcessor.generate_title(normalized_repo_url)
+        
+        existing_job = self.background_worker.get_job_status(job_id)
+        if existing_job and existing_job.status in ['queued', 'processing']:
+            context = {
+                "error": f"Task already exists and is {existing_job.status}",
+                "jobs": self.background_worker.get_all_jobs().values()
+            }
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=409)
+        
+        cached_docs = self.cache_manager.get_cached_docs(normalized_repo_url)
+        if cached_docs and Path(cached_docs).exists():
+            job = JobStatus(
+                job_id=job_id,
+                repo_url=normalized_repo_url,
+                title=title,
+                status='completed',
+                created_at=datetime.now(),
+                completed_at=datetime.now(),
+                docs_path=cached_docs,
+                progress="Retrieved from cache",
+                commit_id=commit_id if commit_id else None,
+                priority=priority
+            )
+        else:
+            job = JobStatus(
+                job_id=job_id,
+                repo_url=normalized_repo_url,
+                title=title,
+                status='queued',
+                created_at=datetime.now(),
+                progress="Waiting in queue...",
+                commit_id=commit_id if commit_id else None,
+                priority=priority
+            )
+            self.background_worker.add_job(job_id, job)
+        
+        self.background_worker.job_status[job_id] = job
+        self.background_worker.save_job_statuses()
+        
+        return await self.admin_get(request)

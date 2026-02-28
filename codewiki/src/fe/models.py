@@ -18,6 +18,7 @@ class JobStatusResponse(BaseModel):
     """Pydantic model for job status API response."""
     job_id: str
     repo_url: str
+    title: str = ""
     status: str
     created_at: datetime
     started_at: Optional[datetime] = None
@@ -27,6 +28,7 @@ class JobStatusResponse(BaseModel):
     docs_path: Optional[str] = None
     main_model: Optional[str] = None
     commit_id: Optional[str] = None
+    priority: int = 0
 
 
 @dataclass
@@ -34,6 +36,7 @@ class JobStatus:
     """Tracks the status of a documentation generation job."""
     job_id: str
     repo_url: str
+    title: str = ""
     status: str  # 'queued', 'processing', 'completed', 'failed'
     created_at: datetime
     started_at: Optional[datetime] = None
@@ -43,6 +46,7 @@ class JobStatus:
     docs_path: Optional[str] = None
     main_model: Optional[str] = None
     commit_id: Optional[str] = None
+    priority: int = 0
 
 
 @dataclass

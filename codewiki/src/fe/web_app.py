@@ -8,11 +8,12 @@ Features:
 - Background processing queue
 - Cache system for generated documentation
 - Job status tracking
+- Admin panel for task management
 """
 
 import argparse
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .cache_manager import CacheManager
 from .background_worker import BackgroundWorker
@@ -55,6 +56,36 @@ async def index_post(request: Request, repo_url: str = Form(...), commit_id: str
 async def get_job_status(job_id: str):
     """API endpoint to get job status."""
     return await web_routes.get_job_status(job_id)
+
+
+@app.get("/api/tasks")
+async def list_tasks(status_filter: str = None):
+    """API endpoint to list all tasks."""
+    return await web_routes.list_tasks(status_filter)
+
+
+@app.post("/api/tasks")
+async def create_task(repo_url: str, commit_id: str = "", priority: int = 0):
+    """API endpoint to create a new documentation generation task."""
+    return await web_routes.create_task_api(repo_url, commit_id, priority)
+
+
+@app.delete("/api/tasks/{job_id}")
+async def delete_task(job_id: str):
+    """API endpoint to delete a task."""
+    return await web_routes.delete_task(job_id)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Admin page for managing tasks."""
+    return await web_routes.admin_get(request)
+
+
+@app.post("/admin", response_class=HTMLResponse)
+async def admin_post(request: Request, repo_url: str = Form(...), commit_id: str = Form(""), priority: int = Form(0)):
+    """Handle task submission from admin page."""
+    return await web_routes.admin_post(request, repo_url, commit_id, priority)
 
 
 @app.get("/docs/{job_id}")

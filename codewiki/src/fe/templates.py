@@ -678,3 +678,527 @@ DOCS_VIEW_TEMPLATE = """
 </body>
 </html>
 """
+
+ADMIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - CodeWiki Documentation Platform</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #f1f5f9;
+            --text-color: #334155;
+            --border-color: #e2e8f0;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --info-color: #06b6d4;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .header p {
+            color: #64748b;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-tab {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-tab:hover, .nav-tab.active {
+            background: var(--primary-color);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-card h3 {
+            font-size: 2rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-card p {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        
+        .stat-card.queued h3 { color: var(--warning-color); }
+        .stat-card.processing h3 { color: var(--info-color); }
+        .stat-card.completed h3 { color: var(--success-color); }
+        .stat-card.failed h3 { color: var(--error-color); }
+        
+        .content-card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .form-section {
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .form-section h2 {
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-color);
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 200px 100px auto;
+            gap: 15px;
+            align-items: end;
+        }
+        
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-color);
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.75rem 1.5rem;
+            background: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+        
+        .btn:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-danger {
+            background: var(--error-color);
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .btn-success {
+            background: var(--success-color);
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+        }
+        
+        .jobs-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .jobs-table th, .jobs-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .jobs-table th {
+            background: var(--secondary-color);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+        }
+        
+        .jobs-table tr:hover {
+            background: var(--secondary-color);
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0.25rem 0.75rem;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-badge.queued {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-badge.processing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-badge.completed {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-badge.failed {
+            background: #fef2f2;
+            color: #991b1b;
+        }
+        
+        .job-title {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        
+        .job-url {
+            font-size: 0.75rem;
+            color: #64748b;
+            word-break: break-all;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-small {
+            padding: 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 6px;
+        }
+        
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        
+        .alert-error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #64748b;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .back-link {
+            color: white;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">
+            <i class="fas fa-arrow-left"></i> Back to Home
+        </a>
+        
+        <div class="header">
+            <h1>
+                <i class="fas fa-cog"></i>
+                Admin Panel
+            </h1>
+            <p>Manage documentation generation tasks</p>
+        </div>
+        
+        <div class="nav-tabs">
+            <a href="/" class="nav-tab">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="/admin" class="nav-tab active">
+                <i class="fas fa-tasks"></i> Tasks
+            </a>
+            <a href="/api/tasks" class="nav-tab" target="_blank">
+                <i class="fas fa-code"></i> API
+            </a>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card queued">
+                <h3><i class="fas fa-clock"></i> {{ queued_count }}</h3>
+                <p>Queued</p>
+            </div>
+            <div class="stat-card processing">
+                <h3><i class="fas fa-spinner fa-spin"></i> {{ processing_count }}</h3>
+                <p>Processing</p>
+            </div>
+            <div class="stat-card completed">
+                <h3><i class="fas fa-check-circle"></i> {{ completed_count }}</h3>
+                <p>Completed</p>
+            </div>
+            <div class="stat-card failed">
+                <h3><i class="fas fa-times-circle"></i> {{ failed_count }}</h3>
+                <p>Failed</p>
+            </div>
+        </div>
+        
+        <div class="content-card">
+            <div class="form-section">
+                <h2>
+                    <i class="fas fa-plus-circle"></i>
+                    Submit New Documentation Task
+                </h2>
+                
+                {% if error %}
+                <div class="alert alert-error">
+                    {{ error }}
+                </div>
+                {% endif %}
+                
+                <form method="POST" action="/admin">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="repo_url">
+                                <i class="fas fa-code-branch"></i> Repository URL
+                            </label>
+                            <input 
+                                type="url" 
+                                id="repo_url" 
+                                name="repo_url" 
+                                placeholder="https://github.com/owner/repository or ssh://git@domain.com:port/owner/repo.git"
+                                required
+                            >
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="commit_id">
+                                <i class="fas fa-commit"></i> Commit ID
+                            </label>
+                            <input 
+                                type="text" 
+                                id="commit_id" 
+                                name="commit_id" 
+                                placeholder="Optional"
+                            >
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="priority">
+                                <i class="fas fa-level-up-alt"></i> Priority
+                            </label>
+                            <select id="priority" name="priority">
+                                <option value="0">Normal</option>
+                                <option value="1">High</option>
+                                <option value="2">Urgent</option>
+                            </select>
+                        </div>
+                        
+                        <button type="submit" class="btn">
+                            <i class="fas fa-rocket"></i> Submit
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-list"></i>
+                All Tasks ({{ total_count }})
+            </h2>
+            
+            {% if jobs %}
+            <table class="jobs-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Progress</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td>
+                            <div class="job-title">{{ job.title or job.repo_url }}</div>
+                            <div class="job-url">{{ job.repo_url }}</div>
+                        </td>
+                        <td>
+                            <span class="status-badge {{ job.status }}">
+                                {% if job.status == 'queued' %}
+                                <i class="fas fa-clock"></i>
+                                {% elif job.status == 'processing' %}
+                                <i class="fas fa-spinner fa-spin"></i>
+                                {% elif job.status == 'completed' %}
+                                <i class="fas fa-check"></i>
+                                {% elif job.status == 'failed' %}
+                                <i class="fas fa-times"></i>
+                                {% endif %}
+                                {{ job.status }}
+                            </span>
+                        </td>
+                        <td>{{ job.progress }}</td>
+                        <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <div class="actions">
+                                {% if job.status == 'completed' %}
+                                <a href="/docs/{{ job.job_id }}" class="btn btn-small btn-success" title="View Documentation">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                {% endif %}
+                                {% if job.status != 'processing' %}
+                                <button class="btn btn-small btn-danger" onclick="deleteTask('{{ job.job_id }}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <p>No tasks yet. Submit a task above to get started.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script>
+        async function deleteTask(jobId) {
+            if (!confirm('Are you sure you want to delete this task?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/tasks/' + jobId, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await response.json();
+                    alert('Failed to delete task: ' + data.detail);
+                }
+            } catch (error) {
+                alert('Error deleting task: ' + error.message);
+            }
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(function() {
+            window.location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>
+"""

@@ -1,6 +1,12 @@
 config/agent_config.yaml
 tool/add_header.sh
 
+_*crentials
+ssh-key
+.env
+_data
+node_modules
+
 # Python
 .venv
 venv/
