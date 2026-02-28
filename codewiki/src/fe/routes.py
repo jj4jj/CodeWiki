@@ -31,54 +31,131 @@ class WebRoutes:
     
     async def index_get(self, request: Request) -> HTMLResponse:
         """Main page with form for submitting Git repositories."""
-        return await self.admin_get(request)
+        # Get completed docs list
+        all_jobs = self.background_worker.get_all_jobs()
+        recent_jobs = sorted(
+            [job for job in all_jobs.values() if job.status == 'completed'],
+            key=lambda x: x.created_at,
+            reverse=True
+        )
+        
+        context = {
+            "message": None,
+            "message_type": None,
+            "repo_url": "",
+            "commit_id": "",
+            "recent_jobs": recent_jobs
+        }
+        
+        return HTMLResponse(content=render_template(WEB_INTERFACE_TEMPLATE, context))
     
     async def index_post(
         self,
         request: Request,
         repo_url: str = Form(...),
         commit_id: str = Form(""),
-        priority: int = Form(0),
-        output: str = Form("docs/codewiki"),
-        create_branch: bool = Form(False),
-        github_pages: bool = Form(False),
-        no_cache: bool = Form(False),
-        include: str = Form(""),
-        exclude: str = Form(""),
-        focus: str = Form(""),
-        doc_type: str = Form(""),
-        instructions: str = Form(""),
-        max_tokens: str = Form(""),
-        max_token_per_module: str = Form(""),
-        max_token_per_leaf_module: str = Form(""),
-        max_depth: str = Form(""),
-        output_lang: str = Form(""),
-        agent_cmd: str = Form(""),
-        concurrency: int = Form(4),
     ) -> HTMLResponse:
         """Handle repository submission."""
-        return await self.admin_post(
-            request,
-            repo_url,
-            commit_id,
-            priority,
-            output,
-            create_branch,
-            github_pages,
-            no_cache,
-            include,
-            exclude,
-            focus,
-            doc_type,
-            instructions,
-            max_tokens,
-            max_token_per_module,
-            max_token_per_leaf_module,
-            max_depth,
-            output_lang,
-            agent_cmd,
-            concurrency,
+        # Clean up old jobs before processing
+        self.cleanup_old_jobs()
+        
+        message = None
+        message_type = None
+        
+        repo_url = repo_url.strip()
+        commit_id = commit_id.strip() if commit_id else ""
+        
+        if not repo_url:
+            message = "Please enter a Git repository URL"
+            message_type = "error"
+        elif not GitHubRepoProcessor.is_valid_github_url(repo_url):
+            message = "Please enter a valid Git repository URL (GitHub, GitLab, or any Git repository)"
+            message_type = "error"
+        else:
+            # Normalize the repo URL for comparison
+            normalized_repo_url = self._normalize_github_url(repo_url)
+            
+            # Get repo info for job ID generation
+            repo_info = GitHubRepoProcessor.get_repo_info(normalized_repo_url)
+            job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
+            title = GitHubRepoProcessor.generate_title(normalized_repo_url)
+            
+            # Check if already in queue, processing, or recently failed
+            existing_job = self.background_worker.get_job_status(job_id)
+            recent_cutoff = datetime.now() - timedelta(minutes=WebAppConfig.RETRY_COOLDOWN_MINUTES)
+            
+            if existing_job:
+                if existing_job.status in ['queued', 'processing']:
+                    pass  # Will handle below
+                elif existing_job.status == 'failed' and existing_job.created_at > recent_cutoff:
+                    pass  # Will handle below
+                else:
+                    existing_job = None  # Job is old or completed, can reuse
+            
+            if existing_job:
+                if existing_job.status in ['queued', 'processing']:
+                    message = f"Repository is already being processed (Job ID: {existing_job.job_id})"
+                else:
+                    message = f"Repository recently failed processing. Please wait a few minutes before retrying (Job ID: {existing_job.job_id})"
+                message_type = "error"
+            else:
+                # Check cache
+                cached_docs = self.cache_manager.get_cached_docs(normalized_repo_url)
+                if cached_docs and Path(cached_docs).exists():
+                    message = "Documentation found in cache! Redirecting to view..."
+                    message_type = "success"
+                    # Create a dummy completed job for display
+                    job = JobStatus(
+                        job_id=job_id,
+                        repo_url=normalized_repo_url,  # Use normalized URL
+                        title=title,
+                        status='completed',
+                        created_at=datetime.now(),
+                        completed_at=datetime.now(),
+                        docs_path=cached_docs,
+                        progress="Retrieved from cache",
+                        commit_id=commit_id if commit_id else None
+                    )
+                    self.background_worker.job_status[job_id] = job
+                else:
+                    # Add to queue
+                    try:
+                        job = JobStatus(
+                            job_id=job_id,
+                            repo_url=normalized_repo_url,  # Use normalized URL
+                            title=title,
+                            status='queued',
+                            created_at=datetime.now(),
+                            progress="Waiting in queue...",
+                            commit_id=commit_id if commit_id else None
+                        )
+                        
+                        self.background_worker.add_job(job_id, job)
+                        message = f"Repository added to processing queue! Job ID: {job_id}"
+                        message_type = "success"
+                        repo_url = ""  # Clear form
+                        
+                    except Exception as e:
+                        message = f"Failed to add repository to queue: {str(e)}\n{format_exc()}"
+                        message_type = "error"
+        
+        # Get completed docs list
+        all_jobs = self.background_worker.get_all_jobs()
+        recent_jobs = sorted(
+            [job for job in all_jobs.values() if job.status == 'completed'],
+            key=lambda x: x.created_at,
+            reverse=True
         )
+        
+        context = {
+            "message": message,
+            "message_type": message_type,
+            "repo_url": repo_url or "",
+            "commit_id": commit_id or "",
+            "recent_jobs": recent_jobs
+        }
+        
+        return HTMLResponse(content=render_template(WEB_INTERFACE_TEMPLATE, context))
     
     async def get_job_status(self, job_id: str) -> JobStatusResponse:
         """API endpoint to get job status."""

@@ -249,7 +249,7 @@ WEB_INTERFACE_TEMPLATE = """
             
             {% if recent_jobs %}
             <div class="recent-jobs">
-                <h3>Recent Jobs</h3>
+                <h3>Available Documentation</h3>
                 {% for job in recent_jobs %}
                 <div class="job-item">
                     <div class="job-header">

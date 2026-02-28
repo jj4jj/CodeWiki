@@ -43,7 +43,7 @@ web_routes = WebRoutes(background_worker=background_worker, cache_manager=cache_
 @app.get("/", response_class=HTMLResponse)
 async def index_get(request: Request):
     """Main page with form for submitting Git repositories."""
-    return await web_routes.admin_get(request)
+    return await web_routes.index_get(request)
 
 
 @app.post("/", response_class=HTMLResponse)
@@ -51,47 +51,9 @@ async def index_post(
     request: Request,
     repo_url: str = Form(...),
     commit_id: str = Form(""),
-    priority: int = Form(0),
-    output: str = Form("docs/codewiki"),
-    create_branch: bool = Form(False),
-    github_pages: bool = Form(False),
-    no_cache: bool = Form(False),
-    include: str = Form(""),
-    exclude: str = Form(""),
-    focus: str = Form(""),
-    doc_type: str = Form(""),
-    instructions: str = Form(""),
-    max_tokens: str = Form(""),
-    max_token_per_module: str = Form(""),
-    max_token_per_leaf_module: str = Form(""),
-    max_depth: str = Form(""),
-    output_lang: str = Form(""),
-    agent_cmd: str = Form(""),
-    concurrency: int = Form(4),
 ):
     """Handle repository submission."""
-    return await web_routes.admin_post(
-        request,
-        repo_url,
-        commit_id,
-        priority,
-        output,
-        create_branch,
-        github_pages,
-        no_cache,
-        include,
-        exclude,
-        focus,
-        doc_type,
-        instructions,
-        max_tokens,
-        max_token_per_module,
-        max_token_per_leaf_module,
-        max_depth,
-        output_lang,
-        agent_cmd,
-        concurrency,
-    )
+    return await web_routes.index_post(request, repo_url, commit_id)
 
 
 @app.get("/api/job/{job_id}")
