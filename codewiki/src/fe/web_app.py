@@ -2,9 +2,9 @@
 """
 CodeWiki Web Application
 
-A web interface for users to submit GitHub repositories for documentation generation.
+A web interface for users to submit Git repositories for documentation generation.
 Features:
-- Simple web form for GitHub repo URL input
+- Simple web form for Git repo URL input
 - Background processing queue
 - Cache system for generated documentation
 - Job status tracking
@@ -23,7 +23,7 @@ from .config import WebAppConfig
 # Initialize FastAPI app
 app = FastAPI(
     title="CodeDoc", 
-    description="Generate comprehensive documentation for any GitHub repository"
+    description="Generate comprehensive documentation for any Git repository"
 )
 
 # Initialize components
@@ -41,7 +41,7 @@ web_routes = WebRoutes(background_worker=background_worker, cache_manager=cache_
 # Register routes
 @app.get("/", response_class=HTMLResponse)
 async def index_get(request: Request):
-    """Main page with form for submitting GitHub repositories."""
+    """Main page with form for submitting Git repositories."""
     return await web_routes.index_get(request)
 
 
@@ -77,7 +77,7 @@ def main():
     import uvicorn
     
     parser = argparse.ArgumentParser(
-        description="CodeWiki Web Application - Generate documentation for GitHub repositories"
+        description="CodeWiki Web Application - Generate documentation for Git repositories"
     )
     parser.add_argument(
         "--host",

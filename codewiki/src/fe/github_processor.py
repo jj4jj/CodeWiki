@@ -5,7 +5,7 @@ GitHub repository processing utilities.
 
 import os
 import subprocess
-from typing import Dict
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 from .config import WebAppConfig
@@ -16,43 +16,109 @@ class GitHubRepoProcessor:
     
     @staticmethod
     def is_valid_github_url(url: str) -> bool:
-        """Validate if the URL is a valid GitHub repository URL."""
+        """Validate if the URL is a valid Git repository URL (GitHub, GitLab, or any Git repo)."""
         try:
+            url = url.strip()
+            
+            # Handle SSH URLs (ssh://git@domain.com:port/owner/repo.git)
+            if url.startswith('ssh://'):
+                parsed = urlparse(url)
+                path = parsed.path.strip('/')
+                # Remove .git suffix if present
+                if path.endswith('.git'):
+                    path = path[:-4]
+                path_parts = path.split('/')
+                # Check if we have at least owner/repo
+                return len(path_parts) >= 2 and all(part for part in path_parts[:2])
+            
+            # Handle SSH SCP-like syntax (git@domain.com:owner/repo.git)
+            if '@' in url and ':' in url and not url.startswith('http'):
+                parts = url.split(':')
+                if len(parts) == 2:
+                    path = parts[1]
+                    # Remove .git suffix if present
+                    if path.endswith('.git'):
+                        path = path[:-4]
+                    path_parts = path.split('/')
+                    # Check if we have at least owner/repo
+                    return len(path_parts) >= 2 and all(part for part in path_parts[:2])
+            
+            # Handle HTTP/HTTPS URLs
             parsed = urlparse(url)
-            if parsed.netloc.lower() not in ['github.com', 'www.github.com']:
-                return False
-            
-            path_parts = parsed.path.strip('/').split('/')
-            if len(path_parts) < 2:
-                return False
-            
-            # Check if it's a valid repo path (owner/repo)
+            # Accept any domain (GitHub, GitLab, or others)
+            path = parsed.path.strip('/')
+            # Remove .git suffix if present
+            if path.endswith('.git'):
+                path = path[:-4]
+            path_parts = path.split('/')
+            # Check if we have at least owner/repo
             return len(path_parts) >= 2 and all(part for part in path_parts[:2])
         except Exception:
             return False
     
     @staticmethod
     def get_repo_info(url: str) -> Dict[str, str]:
-        """Extract repository information from GitHub URL."""
-        parsed = urlparse(url)
-        path_parts = parsed.path.strip('/').split('/')
+        """Extract repository information from Git repository URL."""
+        url = url.strip()
+        path = None
+        domain = None
+        
+        # Handle SSH URLs (ssh://git@domain.com:port/owner/repo.git)
+        if url.startswith('ssh://'):
+            parsed = urlparse(url)
+            path = parsed.path.strip('/')
+            # Extract domain, handle potential port
+            netloc = parsed.netloc
+            if '@' in netloc:
+                domain = netloc.split('@')[1]
+            else:
+                domain = netloc
+            # Remove port if present
+            if ':' in domain:
+                domain = domain.split(':')[0]
+        
+        # Handle SSH SCP-like syntax (git@domain.com:owner/repo.git)
+        elif '@' in url and ':' in url and not url.startswith('http'):
+            parts = url.split(':')
+            path = parts[1]
+            # Extract domain from the first part
+            first_part = parts[0]
+            if '@' in first_part:
+                domain = first_part.split('@')[1]
+            else:
+                domain = first_part
+        
+        # Handle HTTP/HTTPS URLs
+        else:
+            parsed = urlparse(url)
+            path = parsed.path.strip('/')
+            domain = parsed.netloc
+        
+        # Remove .git suffix if present
+        if path and path.endswith('.git'):
+            path = path[:-4]
+        
+        if not path:
+            raise ValueError("Could not extract repository path from URL")
+        
+        path_parts = path.split('/')
+        
+        if len(path_parts) < 2:
+            raise ValueError("Invalid repository path")
         
         owner = path_parts[0]
         repo = path_parts[1]
-        
-        # Remove .git suffix if present
-        if repo.endswith('.git'):
-            repo = repo[:-4]
         
         return {
             'owner': owner,
             'repo': repo,
             'full_name': f"{owner}/{repo}",
-            'clone_url': f"https://github.com/{owner}/{repo}.git"
+            'clone_url': url,
+            'domain': domain if domain else 'unknown'
         }
     
     @staticmethod
-    def clone_repository(clone_url: str, target_dir: str, commit_id: str = None) -> bool:
+    def clone_repository(clone_url: str, target_dir: str, commit_id: Optional[str] = None) -> bool:
         """Clone a GitHub repository to the target directory, optionally checking out a specific commit."""
         try:
             # Ensure target directory exists

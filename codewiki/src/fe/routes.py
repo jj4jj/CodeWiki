@@ -30,7 +30,7 @@ class WebRoutes:
         self.cache_manager = cache_manager
     
     async def index_get(self, request: Request) -> HTMLResponse:
-        """Main page with form for submitting GitHub repositories."""
+        """Main page with form for submitting Git repositories."""
         # Clean up old jobs before displaying
         # self.cleanup_old_jobs()
         
@@ -64,10 +64,10 @@ class WebRoutes:
         commit_id = commit_id.strip() if commit_id else ""
         
         if not repo_url:
-            message = "Please enter a GitHub repository URL"
+            message = "Please enter a Git repository URL"
             message_type = "error"
         elif not GitHubRepoProcessor.is_valid_github_url(repo_url):
-            message = "Please enter a valid GitHub repository URL"
+            message = "Please enter a valid Git repository URL (GitHub, GitLab, or any Git repository)"
             message_type = "error"
         else:
             # Normalize the repo URL for comparison
@@ -190,12 +190,31 @@ class WebRoutes:
             repo_url = job.repo_url
         else:
             # No job status - try to find documentation in cache by job_id
-            # Convert job_id back to repo full name and construct potential paths
+            # Convert job_id back to repo full name
             repo_full_name = self._job_id_to_repo_full_name(job_id)
-            potential_repo_url = f"https://github.com/{repo_full_name}"
             
-            # Check if documentation exists in cache
+            # Try multiple URL formats to find cached documentation
+            # 1. Try GitHub URL (most common)
+            potential_repo_url = f"https://github.com/{repo_full_name}"
             cached_docs = self.cache_manager.get_cached_docs(potential_repo_url)
+            
+            # 2. If not found, try GitLab URL
+            if not cached_docs:
+                potential_repo_url = f"https://gitlab.com/{repo_full_name}"
+                cached_docs = self.cache_manager.get_cached_docs(potential_repo_url)
+            
+            # 3. If still not found, search all cache entries for matching full_name
+            if not cached_docs:
+                for repo_hash, entry in self.cache_manager.cache_index.items():
+                    try:
+                        entry_repo_info = GitHubRepoProcessor.get_repo_info(entry.repo_url)
+                        if entry_repo_info['full_name'] == repo_full_name:
+                            cached_docs = entry.docs_path
+                            potential_repo_url = entry.repo_url
+                            break
+                    except Exception:
+                        continue
+            
             if cached_docs and Path(cached_docs).exists():
                 docs_path = Path(cached_docs)
                 repo_url = potential_repo_url
@@ -268,11 +287,15 @@ class WebRoutes:
             raise HTTPException(status_code=500, detail=f"Error reading {filename}: {e}\n{format_exc()}")
     
     def _normalize_github_url(self, url: str) -> str:
-        """Normalize GitHub URL for consistent comparison."""
+        """Normalize Git repository URL for consistent comparison."""
         try:
             # Get repo info to standardize the URL format
             repo_info = GitHubRepoProcessor.get_repo_info(url)
-            return f"https://github.com/{repo_info['full_name']}"
+            # For SSH URLs, use the original URL; for HTTP URLs, use the standard format
+            if url.startswith('ssh://') or ('@' in url and ':' in url and not url.startswith('http')):
+                return url
+            else:
+                return f"https://{repo_info['domain']}/{repo_info['full_name']}"
         except Exception:
             # Fallback to basic normalization
             return url.rstrip('/').lower()

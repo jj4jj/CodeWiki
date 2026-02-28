@@ -27,6 +27,16 @@ class TreeSitterGoAnalyzer:
             language_capsule = tree_sitter_go.language()
             self.go_language = Language(language_capsule)
             self.parser = Parser(self.go_language)
+        except ValueError as e:
+            if "Incompatible Language version" in str(e):
+                logger.error(f"Tree-sitter Go language version incompatible: {e}")
+                logger.error("Please update tree-sitter-go to version 0.23.0 or compatible version")
+                logger.error("Run: pip install 'tree-sitter-go>=0.23.0'")
+            else:
+                logger.error(f"Failed to initialize Go parser: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            self.parser = None
+            self.go_language = None
         except Exception as e:
             logger.error(f"Failed to initialize Go parser: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
