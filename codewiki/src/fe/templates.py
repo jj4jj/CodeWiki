@@ -965,6 +965,67 @@ ADMIN_TEMPLATE = """
             border-radius: 6px;
         }
         
+        .options-details {
+            margin: 1rem 0;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 0.5rem;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .options-details summary {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            color: #475569;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .options-details summary::-webkit-details-marker {
+            display: none;
+        }
+        
+        .options-details summary::before {
+            content: '\f196';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            color: #64748b;
+        }
+        
+        .options-details[open] summary::before {
+            content: '\f147';
+        }
+        
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 1rem;
+            margin-top: 0.5rem;
+        }
+        
+        .form-group-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+        }
+        
+        .form-group-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .form-group-checkbox label {
+            cursor: pointer;
+            color: #475569;
+            font-weight: normal;
+        }
+        
         .alert {
             padding: 1rem;
             border-radius: 8px;
@@ -1098,7 +1159,135 @@ ADMIN_TEMPLATE = """
                                 <option value="2">Urgent</option>
                             </select>
                         </div>
-                        
+                    </div>
+                    
+                    <details class="options-details">
+                        <summary><i class="fas fa-cog"></i> Advanced Options</summary>
+                        <div class="options-grid">
+                            <div class="form-group">
+                                <label for="agent_cmd">
+                                    <i class="fas fa-robot"></i> Agent Command
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="agent_cmd" 
+                                    name="agent_cmd" 
+                                    placeholder="e.g., claude -p or opencode"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="max_depth">
+                                    <i class="fas fa-layer-group"></i> Max Depth
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="max_depth" 
+                                    name="max_depth" 
+                                    placeholder="Default: unlimited"
+                                    min="1"
+                                    max="10"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="concurrency">
+                                    <i class="fas fa-tasks"></i> Concurrency
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="concurrency" 
+                                    name="concurrency" 
+                                    value="4"
+                                    min="1"
+                                    max="16"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="output_lang">
+                                    <i class="fas fa-language"></i> Output Language
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="output_lang" 
+                                    name="output_lang" 
+                                    placeholder="e.g., zh, ja, en"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="max_tokens">
+                                    <i class="fas fa-coins"></i> Max Tokens
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="max_tokens" 
+                                    name="max_tokens" 
+                                    placeholder="Max response tokens"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="include">
+                                    <i class="fas fa-file-include"></i> Include Patterns
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="include" 
+                                    name="include" 
+                                    placeholder="e.g., *.py,*.js"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="exclude">
+                                    <i class="fas fa-file-exclude"></i> Exclude Patterns
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="exclude" 
+                                    name="exclude" 
+                                    placeholder="e.g., *test*,*node_modules*"
+                                >
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="focus">
+                                    <i class="fas fa-bullseye"></i> Focus Paths
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="focus" 
+                                    name="focus" 
+                                    placeholder="e.g., src/core,src/api"
+                                >
+                            </div>
+                            
+                            <div class="form-group-checkbox">
+                                <input type="checkbox" id="github_pages" name="github_pages" value="true">
+                                <label for="github_pages">
+                                    <i class="fas fa-globe"></i> Generate GitHub Pages (index.html)
+                                </label>
+                            </div>
+                            
+                            <div class="form-group-checkbox">
+                                <input type="checkbox" id="no_cache" name="no_cache" value="true">
+                                <label for="no_cache">
+                                    <i class="fas fa-ban"></i> Force Regeneration (Ignore Cache)
+                                </label>
+                            </div>
+                            
+                            <div class="form-group-checkbox">
+                                <input type="checkbox" id="create_branch" name="create_branch" value="true">
+                                <label for="create_branch">
+                                    <i class="fas fa-code-branch"></i> Create Git Branch
+                                </label>
+                            </div>
+                        </div>
+                    </details>
+                    
+                    <div class="form-row">
                         <button type="submit" class="btn">
                             <i class="fas fa-rocket"></i> Submit
                         </button>

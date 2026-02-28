@@ -17,7 +17,7 @@ from dataclasses import asdict
 
 from codewiki.src.be.documentation_generator import DocumentationGenerator
 from codewiki.src.config import Config, MAIN_MODEL
-from .models import JobStatus
+from .models import JobStatus, GenerationOptions
 from .cache_manager import CacheManager
 from .github_processor import GitHubRepoProcessor
 from .config import WebAppConfig
@@ -73,6 +73,12 @@ class BackgroundWorker:
             for job_id, job_data in data.items():
                 # Only load completed jobs to avoid inconsistent state
                 if job_data.get('status') == 'completed':
+                    options = None
+                    if job_data.get('options'):
+                        try:
+                            options = GenerationOptions(**job_data['options'])
+                        except Exception:
+                            pass
                     self.job_status[job_id] = JobStatus(
                         job_id=job_data['job_id'],
                         repo_url=job_data['repo_url'],
@@ -86,7 +92,8 @@ class BackgroundWorker:
                         docs_path=job_data.get('docs_path'),
                         main_model=job_data.get('main_model'),
                         commit_id=job_data.get('commit_id'),
-                        priority=job_data.get('priority', 0)
+                        priority=job_data.get('priority', 0),
+                        options=options
                     )
             print(f"Loaded {len([j for j in self.job_status.values() if j.status == 'completed'])} completed jobs from disk")
         except Exception as e:
@@ -137,7 +144,7 @@ class BackgroundWorker:
             
             data = {}
             for job_id, job in self.job_status.items():
-                data[job_id] = {
+                job_dict = {
                     'job_id': job.job_id,
                     'repo_url': job.repo_url,
                     'title': job.title,
@@ -152,6 +159,9 @@ class BackgroundWorker:
                     'commit_id': job.commit_id,
                     'priority': job.priority
                 }
+                if job.options:
+                    job_dict['options'] = job.options.model_dump() if hasattr(job.options, 'model_dump') else {}
+                data[job_id] = job_dict
             
             file_manager.save_json(data, self.jobs_file)
         except Exception as e:
@@ -219,6 +229,27 @@ class BackgroundWorker:
             config = Config.from_args(args)
             # Override docs_dir with job-specific directory
             config.docs_dir = os.path.join("output", "docs", f"{job_id}-docs")
+            
+            # Apply generation options if provided
+            if job.options:
+                if job.options.max_depth is not None:
+                    config.max_depth = job.options.max_depth
+                if job.options.agent_cmd:
+                    config.agent_cmd = job.options.agent_cmd
+                if job.options.max_tokens is not None:
+                    config.max_tokens = job.options.max_tokens
+                if job.options.max_token_per_module is not None:
+                    config.max_token_per_module = job.options.max_token_per_module
+                if job.options.max_token_per_leaf_module is not None:
+                    config.max_token_per_leaf_module = job.options.max_token_per_leaf_module
+                if job.options.include or job.options.exclude or job.options.focus:
+                    config.agent_instructions = {}
+                    if job.options.include:
+                        config.agent_instructions['include_patterns'] = job.options.include.split(',')
+                    if job.options.exclude:
+                        config.agent_instructions['exclude_patterns'] = job.options.exclude.split(',')
+                    if job.options.focus:
+                        config.agent_instructions['focus_modules'] = job.options.focus.split(',')
             
             job.progress = "Generating documentation..."
             

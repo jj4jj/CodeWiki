@@ -12,7 +12,7 @@ from traceback import format_exc
 from fastapi import Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
-from .models import JobStatus, JobStatusResponse
+from .models import JobStatus, JobStatusResponse, GenerationOptions
 from .github_processor import GitHubRepoProcessor
 from .background_worker import BackgroundWorker
 from .cache_manager import CacheManager
@@ -367,6 +367,25 @@ class WebRoutes:
         job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
         title = GitHubRepoProcessor.generate_title(normalized_repo_url)
         
+        options = GenerationOptions(
+            output=output if output != "docs/codewiki" else None,
+            create_branch=create_branch,
+            github_pages=github_pages,
+            no_cache=no_cache,
+            include=include if include else None,
+            exclude=exclude if exclude else None,
+            focus=focus if focus else None,
+            doc_type=doc_type if doc_type else None,
+            instructions=instructions if instructions else None,
+            max_tokens=int(max_tokens) if max_tokens and max_tokens.isdigit() else None,
+            max_token_per_module=int(max_token_per_module) if max_token_per_module and max_token_per_module.isdigit() else None,
+            max_token_per_leaf_module=int(max_token_per_leaf_module) if max_token_per_leaf_module and max_token_per_leaf_module.isdigit() else None,
+            max_depth=int(max_depth) if max_depth and max_depth.isdigit() else None,
+            output_lang=output_lang if output_lang else None,
+            agent_cmd=agent_cmd if agent_cmd else None,
+            concurrency=concurrency
+        )
+        
         existing_job = self.background_worker.get_job_status(job_id)
         if existing_job and existing_job.status in ['queued', 'processing']:
             raise HTTPException(status_code=409, detail="Task already exists and is in progress")
@@ -429,7 +448,26 @@ class WebRoutes:
         
         return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context))
     
-    async def admin_post(self, request: Request, repo_url: str = Form(...), commit_id: str = Form(""), priority: int = Form(0)) -> HTMLResponse:
+    async def admin_post(self, request: Request, 
+                         repo_url: str = Form(...), 
+                         commit_id: str = Form(""), 
+                         priority: int = Form(0),
+                         output: str = Form("docs/codewiki"),
+                         create_branch: bool = Form(False),
+                         github_pages: bool = Form(False),
+                         no_cache: bool = Form(False),
+                         include: str = Form(""),
+                         exclude: str = Form(""),
+                         focus: str = Form(""),
+                         doc_type: str = Form(""),
+                         instructions: str = Form(""),
+                         max_tokens: str = Form(""),
+                         max_token_per_module: str = Form(""),
+                         max_token_per_leaf_module: str = Form(""),
+                         max_depth: str = Form(""),
+                         output_lang: str = Form(""),
+                         agent_cmd: str = Form(""),
+                         concurrency: int = Form(4)) -> HTMLResponse:
         """Handle task submission from admin page."""
         repo_url = repo_url.strip()
         commit_id = commit_id.strip() if commit_id else ""
@@ -473,7 +511,8 @@ class WebRoutes:
                 docs_path=cached_docs,
                 progress="Retrieved from cache",
                 commit_id=commit_id if commit_id else None,
-                priority=priority
+                priority=priority,
+                options=options
             )
         else:
             job = JobStatus(
@@ -484,7 +523,8 @@ class WebRoutes:
                 created_at=datetime.now(),
                 progress="Waiting in queue...",
                 commit_id=commit_id if commit_id else None,
-                priority=priority
+                priority=priority,
+                options=options
             )
             self.background_worker.add_job(job_id, job)
         
