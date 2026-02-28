@@ -22,7 +22,7 @@ from .config import WebAppConfig
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="CodeWiki", 
+    title="CodeDoc", 
     description="Generate comprehensive documentation for any GitHub repository"
 )
 

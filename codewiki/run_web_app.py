@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Startup script for CodeWiki Web Application
+Startup script for CodeDoc Web Application
 """
 
 import os

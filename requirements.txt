@@ -151,6 +151,7 @@ tree-sitter-language-pack==0.8.0
 tree-sitter-python==0.23.6
 tree-sitter-typescript==0.21.2
 tree-sitter-yaml==0.7.1
+tree-sitter-go==0.25.0
 types-protobuf==6.30.2.20250822
 types-requests==2.32.4.20250611
 typing-inspection==0.4.1

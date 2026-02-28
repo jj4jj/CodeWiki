@@ -11,9 +11,9 @@ services:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
     env_file:
-      - ../.env
-    networks:
-      - net
+      - ./.env
+    # networks:
+    #   - net
     volumes:
       # Persistent storage for cache and output
       - ../output:/app/output
@@ -28,7 +28,7 @@ services:
       retries: 3
       start_period: 20s
 
-networks:
-  net:
-    external: true
-    name: codewiki-network
+# networks:
+#   net:
+#     external: true
+#     name: codewiki-network
