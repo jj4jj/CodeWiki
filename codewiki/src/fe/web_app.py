@@ -43,13 +43,55 @@ web_routes = WebRoutes(background_worker=background_worker, cache_manager=cache_
 @app.get("/", response_class=HTMLResponse)
 async def index_get(request: Request):
     """Main page with form for submitting Git repositories."""
-    return await web_routes.index_get(request)
+    return await web_routes.admin_get(request)
 
 
 @app.post("/", response_class=HTMLResponse)
-async def index_post(request: Request, repo_url: str = Form(...), commit_id: str = Form("")):
+async def index_post(
+    request: Request,
+    repo_url: str = Form(...),
+    commit_id: str = Form(""),
+    priority: int = Form(0),
+    output: str = Form("docs/codewiki"),
+    create_branch: bool = Form(False),
+    github_pages: bool = Form(False),
+    no_cache: bool = Form(False),
+    include: str = Form(""),
+    exclude: str = Form(""),
+    focus: str = Form(""),
+    doc_type: str = Form(""),
+    instructions: str = Form(""),
+    max_tokens: str = Form(""),
+    max_token_per_module: str = Form(""),
+    max_token_per_leaf_module: str = Form(""),
+    max_depth: str = Form(""),
+    output_lang: str = Form(""),
+    agent_cmd: str = Form(""),
+    concurrency: int = Form(4),
+):
     """Handle repository submission."""
-    return await web_routes.index_post(request, repo_url, commit_id)
+    return await web_routes.admin_post(
+        request,
+        repo_url,
+        commit_id,
+        priority,
+        output,
+        create_branch,
+        github_pages,
+        no_cache,
+        include,
+        exclude,
+        focus,
+        doc_type,
+        instructions,
+        max_tokens,
+        max_token_per_module,
+        max_token_per_leaf_module,
+        max_depth,
+        output_lang,
+        agent_cmd,
+        concurrency,
+    )
 
 
 @app.get("/api/job/{job_id}")
@@ -65,9 +107,49 @@ async def list_tasks(status_filter: str = None):
 
 
 @app.post("/api/tasks")
-async def create_task(repo_url: str, commit_id: str = "", priority: int = 0):
+async def create_task(
+    repo_url: str,
+    commit_id: str = "",
+    priority: int = 0,
+    output: str = "docs/codewiki",
+    create_branch: bool = False,
+    github_pages: bool = False,
+    no_cache: bool = False,
+    include: str = "",
+    exclude: str = "",
+    focus: str = "",
+    doc_type: str = "",
+    instructions: str = "",
+    max_tokens: str = "",
+    max_token_per_module: str = "",
+    max_token_per_leaf_module: str = "",
+    max_depth: str = "",
+    output_lang: str = "",
+    agent_cmd: str = "",
+    concurrency: int = 4,
+):
     """API endpoint to create a new documentation generation task."""
-    return await web_routes.create_task_api(repo_url, commit_id, priority)
+    return await web_routes.create_task_api(
+        repo_url,
+        commit_id,
+        priority,
+        output,
+        create_branch,
+        github_pages,
+        no_cache,
+        include,
+        exclude,
+        focus,
+        doc_type,
+        instructions,
+        max_tokens,
+        max_token_per_module,
+        max_token_per_leaf_module,
+        max_depth,
+        output_lang,
+        agent_cmd,
+        concurrency,
+    )
 
 
 @app.delete("/api/tasks/{job_id}")
@@ -83,9 +165,51 @@ async def admin_page(request: Request):
 
 
 @app.post("/admin", response_class=HTMLResponse)
-async def admin_post(request: Request, repo_url: str = Form(...), commit_id: str = Form(""), priority: int = Form(0)):
+async def admin_post(
+    request: Request,
+    repo_url: str = Form(...),
+    commit_id: str = Form(""),
+    priority: int = Form(0),
+    output: str = Form("docs/codewiki"),
+    create_branch: bool = Form(False),
+    github_pages: bool = Form(False),
+    no_cache: bool = Form(False),
+    include: str = Form(""),
+    exclude: str = Form(""),
+    focus: str = Form(""),
+    doc_type: str = Form(""),
+    instructions: str = Form(""),
+    max_tokens: str = Form(""),
+    max_token_per_module: str = Form(""),
+    max_token_per_leaf_module: str = Form(""),
+    max_depth: str = Form(""),
+    output_lang: str = Form(""),
+    agent_cmd: str = Form(""),
+    concurrency: int = Form(4),
+):
     """Handle task submission from admin page."""
-    return await web_routes.admin_post(request, repo_url, commit_id, priority)
+    return await web_routes.admin_post(
+        request,
+        repo_url,
+        commit_id,
+        priority,
+        output,
+        create_branch,
+        github_pages,
+        no_cache,
+        include,
+        exclude,
+        focus,
+        doc_type,
+        instructions,
+        max_tokens,
+        max_token_per_module,
+        max_token_per_leaf_module,
+        max_depth,
+        output_lang,
+        agent_cmd,
+        concurrency,
+    )
 
 
 @app.get("/docs/{job_id}")

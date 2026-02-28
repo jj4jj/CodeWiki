@@ -1175,6 +1175,18 @@ ADMIN_TEMPLATE = """
                                     placeholder="e.g., claude -p or opencode"
                                 >
                             </div>
+
+                            <div class="form-group">
+                                <label for="output">
+                                    <i class="fas fa-folder-open"></i> Output Directory
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="output" 
+                                    name="output" 
+                                    placeholder="e.g., docs/codewiki"
+                                >
+                            </div>
                             
                             <div class="form-group">
                                 <label for="max_depth">
@@ -1227,6 +1239,30 @@ ADMIN_TEMPLATE = """
                                     placeholder="Max response tokens"
                                 >
                             </div>
+
+                            <div class="form-group">
+                                <label for="max_token_per_module">
+                                    <i class="fas fa-cubes"></i> Max Tokens Per Module
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="max_token_per_module" 
+                                    name="max_token_per_module" 
+                                    placeholder="Max tokens per module"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="max_token_per_leaf_module">
+                                    <i class="fas fa-leaf"></i> Max Tokens Per Leaf Module
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="max_token_per_leaf_module" 
+                                    name="max_token_per_leaf_module" 
+                                    placeholder="Max tokens per leaf module"
+                                >
+                            </div>
                             
                             <div class="form-group">
                                 <label for="include">
@@ -1261,6 +1297,30 @@ ADMIN_TEMPLATE = """
                                     id="focus" 
                                     name="focus" 
                                     placeholder="e.g., src/core,src/api"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="doc_type">
+                                    <i class="fas fa-book"></i> Doc Type
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="doc_type" 
+                                    name="doc_type" 
+                                    placeholder="e.g., api, architecture, user-guide"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="instructions">
+                                    <i class="fas fa-pen"></i> Instructions
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="instructions" 
+                                    name="instructions" 
+                                    placeholder="Custom generation instructions"
                                 >
                             </div>
                             
@@ -1362,6 +1422,66 @@ ADMIN_TEMPLATE = """
     </div>
     
     <script>
+        const ADVANCED_STORAGE_KEY = "codewiki_admin_advanced_options";
+
+        function loadAdvancedOptions() {
+            try {
+                const raw = localStorage.getItem(ADVANCED_STORAGE_KEY);
+                if (!raw) return;
+                const data = JSON.parse(raw);
+                for (const [name, value] of Object.entries(data)) {
+                    const el = document.querySelector(`[name="${name}"]`);
+                    if (!el) continue;
+                    if (el.type === "checkbox") {
+                        el.checked = Boolean(value);
+                    } else {
+                        el.value = value;
+                    }
+                }
+            } catch (err) {
+                console.warn("Failed to load advanced options", err);
+            }
+        }
+
+        function saveAdvancedOptions() {
+            const form = document.querySelector('form[action="/admin"]');
+            if (!form) return;
+            const data = {};
+            form.querySelectorAll("input, select, textarea").forEach((el) => {
+                if (!el.name) return;
+                if (el.type === "checkbox") {
+                    data[el.name] = el.checked;
+                } else {
+                    data[el.name] = el.value;
+                }
+            });
+            try {
+                localStorage.setItem(ADVANCED_STORAGE_KEY, JSON.stringify(data));
+            } catch (err) {
+                console.warn("Failed to save advanced options", err);
+            }
+        }
+
+        function wireAdvancedOptionsPersistence() {
+            const form = document.querySelector('form[action="/admin"]');
+            if (!form) return;
+            form.addEventListener("input", (e) => {
+                if (e.target && e.target.name) {
+                    saveAdvancedOptions();
+                }
+            });
+            form.addEventListener("change", (e) => {
+                if (e.target && e.target.name) {
+                    saveAdvancedOptions();
+                }
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadAdvancedOptions();
+            wireAdvancedOptionsPersistence();
+        });
+
         async function deleteTask(jobId) {
             if (!confirm('Are you sure you want to delete this task?')) {
                 return;

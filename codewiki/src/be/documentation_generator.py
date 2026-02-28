@@ -351,7 +351,8 @@ class DocumentationGenerator:
             
             # Generate module documentation using dynamic programming approach
             # This processes leaf modules first, then parent modules
-            working_dir = await self.generate_module_documentation(components, leaf_nodes)
+            concurrency = max(1, getattr(self.config, "concurrency", 1))
+            working_dir = await self.generate_module_documentation(components, leaf_nodes, concurrency=concurrency)
             
             # Create documentation metadata
             self.create_documentation_metadata(working_dir, components, len(leaf_nodes))

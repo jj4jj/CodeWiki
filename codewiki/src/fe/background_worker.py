@@ -22,6 +22,7 @@ from .cache_manager import CacheManager
 from .github_processor import GitHubRepoProcessor
 from .config import WebAppConfig
 from codewiki.src.utils import file_manager
+from codewiki.cli.html_generator import HTMLGenerator
 
 class BackgroundWorker:
     """Background worker for processing documentation generation jobs."""
@@ -195,7 +196,8 @@ class BackgroundWorker:
             job.main_model = MAIN_MODEL
             
             # Check cache first
-            cached_docs = self.cache_manager.get_cached_docs(job.repo_url)
+            use_cache = not (job.options and job.options.no_cache)
+            cached_docs = self.cache_manager.get_cached_docs(job.repo_url) if use_cache else None
             if cached_docs and Path(cached_docs).exists():
                 job.status = 'completed'
                 job.completed_at = datetime.now()
@@ -228,10 +230,13 @@ class BackgroundWorker:
             args = argparse.Namespace(repo_path=temp_repo_dir)
             config = Config.from_args(args)
             # Override docs_dir with job-specific directory
-            config.docs_dir = os.path.join("output", "docs", f"{job_id}-docs")
+            default_docs_dir = os.path.join("output", "docs", f"{job_id}-docs")
+            config.docs_dir = default_docs_dir
             
             # Apply generation options if provided
             if job.options:
+                if job.options.output:
+                    config.docs_dir = job.options.output
                 if job.options.max_depth is not None:
                     config.max_depth = job.options.max_depth
                 if job.options.agent_cmd:
@@ -242,14 +247,26 @@ class BackgroundWorker:
                     config.max_token_per_module = job.options.max_token_per_module
                 if job.options.max_token_per_leaf_module is not None:
                     config.max_token_per_leaf_module = job.options.max_token_per_leaf_module
-                if job.options.include or job.options.exclude or job.options.focus:
-                    config.agent_instructions = {}
+                if job.options.concurrency is not None:
+                    config.concurrency = max(1, job.options.concurrency)
+                if job.options.include or job.options.exclude or job.options.focus or job.options.doc_type or job.options.instructions:
+                    config.agent_instructions = config.agent_instructions or {}
                     if job.options.include:
-                        config.agent_instructions['include_patterns'] = job.options.include.split(',')
+                        config.agent_instructions['include_patterns'] = [
+                            part.strip() for part in job.options.include.split(',') if part.strip()
+                        ]
                     if job.options.exclude:
-                        config.agent_instructions['exclude_patterns'] = job.options.exclude.split(',')
+                        config.agent_instructions['exclude_patterns'] = [
+                            part.strip() for part in job.options.exclude.split(',') if part.strip()
+                        ]
                     if job.options.focus:
-                        config.agent_instructions['focus_modules'] = job.options.focus.split(',')
+                        config.agent_instructions['focus_modules'] = [
+                            part.strip() for part in job.options.focus.split(',') if part.strip()
+                        ]
+                    if job.options.doc_type:
+                        config.agent_instructions['doc_type'] = job.options.doc_type
+                    if job.options.instructions:
+                        config.agent_instructions['custom_instructions'] = job.options.instructions
             
             job.progress = "Generating documentation..."
             
@@ -267,6 +284,42 @@ class BackgroundWorker:
             # Cache the results
             docs_path = os.path.abspath(config.docs_dir)
             self.cache_manager.add_to_cache(job.repo_url, docs_path)
+
+            # Generate GitHub Pages HTML viewer (optional)
+            if job.options and job.options.github_pages:
+                try:
+                    html_generator = HTMLGenerator()
+                    output_path = Path(docs_path) / "index.html"
+                    html_generator.generate(
+                        output_path=output_path,
+                        title=job.title or GitHubRepoProcessor.generate_title(job.repo_url),
+                        repository_url=job.repo_url,
+                        docs_dir=Path(docs_path)
+                    )
+                except Exception as e:
+                    print(f"Job {job_id}: Failed to generate GitHub Pages HTML: {e}")
+            
+            if job.options and job.options.output_lang:
+                from pathlib import Path as _Path
+                from codewiki.cli.adapters.translator import DocTranslator
+                translator = DocTranslator(config={
+                    'base_url': config.llm_base_url,
+                    'api_key': config.llm_api_key,
+                    'main_model': config.main_model,
+                    'cluster_model': config.cluster_model,
+                    'fallback_model': config.fallback_model,
+                    'fallback_models': config.fallback_models,
+                    'max_tokens': config.max_tokens,
+                    'max_token_per_module': config.max_token_per_module,
+                    'max_token_per_leaf_module': config.max_token_per_leaf_module,
+                    'max_depth': config.max_depth,
+                    'agent_cmd': config.agent_cmd,
+                })
+                translator.translate_docs(
+                    output_dir=_Path(docs_path),
+                    lang_code=job.options.output_lang,
+                    concurrency=max(1, job.options.concurrency)
+                )
             
             # Update job status
             job.status = 'completed'

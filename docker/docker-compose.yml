@@ -19,7 +19,9 @@ services:
       - ../output:/app/output
       # Git credentials (if needed for private repos)
       # - ~/.gitconfig:/root/.gitconfig:ro
-      - ./_home_credentials:/root/
+      - ./_home_credentials/.ssh:/root/.ssh
+      - ./_home_credentials/.claude:/root/.claude
+      - ./_home_credentials/.config:/root/.config
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]

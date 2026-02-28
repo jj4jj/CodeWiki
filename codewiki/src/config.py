@@ -63,6 +63,7 @@ class Config:
     max_tokens: int = DEFAULT_MAX_TOKENS
     max_token_per_module: int = DEFAULT_MAX_TOKEN_PER_MODULE
     max_token_per_leaf_module: int = DEFAULT_MAX_TOKEN_PER_LEAF_MODULE
+    concurrency: int = 4
     # Agent instructions for customization
     agent_instructions: Optional[Dict[str, Any]] = None
 
@@ -155,7 +156,8 @@ class Config:
             llm_api_key=LLM_API_KEY,
             main_model=MAIN_MODEL,
             cluster_model=CLUSTER_MODEL,
-            fallback_model=FALLBACK_MODEL_1
+            fallback_model=FALLBACK_MODEL_1,
+            concurrency=4
         )
     
     @classmethod
@@ -174,7 +176,8 @@ class Config:
         max_token_per_module: int = DEFAULT_MAX_TOKEN_PER_MODULE,
         max_token_per_leaf_module: int = DEFAULT_MAX_TOKEN_PER_LEAF_MODULE,
         max_depth: int = MAX_DEPTH,
-        agent_instructions: Optional[Dict[str, Any]] = None
+        agent_instructions: Optional[Dict[str, Any]] = None,
+        concurrency: int = 4
     ) -> 'Config':
         """
         Create configuration for CLI context.
@@ -215,5 +218,6 @@ class Config:
             max_tokens=max_tokens,
             max_token_per_module=max_token_per_module,
             max_token_per_leaf_module=max_token_per_leaf_module,
-            agent_instructions=agent_instructions
+            agent_instructions=agent_instructions,
+            concurrency=concurrency
         )

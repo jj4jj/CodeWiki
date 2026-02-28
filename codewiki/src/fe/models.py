@@ -94,9 +94,9 @@ class JobStatus:
     """Tracks the status of a documentation generation job."""
     job_id: str
     repo_url: str
-    title: str = ""
     status: str  # 'queued', 'processing', 'completed', 'failed'
     created_at: datetime
+    title: str = ""
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
