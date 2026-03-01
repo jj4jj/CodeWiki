@@ -80,3 +80,8 @@ Thumbs.db
 *.tmp
 *.log
 *.bak
+
+
+##
+docs_test
+*.egg-info
