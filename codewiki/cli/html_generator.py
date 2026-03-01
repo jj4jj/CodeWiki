@@ -176,6 +176,86 @@ class HTMLGenerator:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         safe_write(output_path, html_content)
+        
+    def generate_index_portal(
+        self,
+        output_path: Path,
+        title: str,
+        repository_url: Optional[str] = None,
+        docs_root: Optional[Path] = None
+    ):
+        """
+        Generate high-tech HTML documentation portal with gallery support.
+        
+        Args:
+            output_path: Output file path (index.html)
+            title: Portal title
+            repository_url: GitHub repository URL
+            docs_root: Root documentation directory to scan for wikis
+        """
+        # Load template
+        template_path = self.template_dir / "index_template.html"
+        if not template_path.exists():
+            raise FileSystemError(f"Template not found: {template_path}")
+        
+        template_content = safe_read(template_path)
+        
+        # Build repository link
+        repo_link = ""
+        if repository_url:
+            repo_link = f'<a href="{repository_url}" class="repo-link" target="_blank">🔗 View Repository</a>'
+            
+        # Discover wiki gallery
+        wiki_gallery = []
+        if docs_root and docs_root.exists():
+            try:
+                for child in sorted(docs_root.iterdir()):
+                    if child.is_dir() and not child.name.startswith(('.', '_', 'temp')):
+                        # Check if it's a valid codewiki project
+                        if (child / "module_tree.json").exists() or (child / "metadata.json").exists():
+                            # Load metadata if available to get stats/descriptions
+                            desc = f"Documentation for {child.name}"
+                            stats = {}
+                            metadata_path = child / "metadata.json"
+                            if metadata_path.exists():
+                                try:
+                                    meta = json.loads(safe_read(metadata_path))
+                                    if 'statistics' in meta:
+                                        stats = meta['statistics']
+                                except Exception:
+                                    pass
+                                    
+                            # Check available languages
+                            langs = self.detect_available_languages(child)
+                            
+                            wiki_gallery.append({
+                                "id": child.name,
+                                "name": child.name.title().replace('-', ' '),
+                                "path": child.name,
+                                "description": desc,
+                                "statistics": stats,
+                                "languages": langs
+                            })
+            except Exception:
+                pass
+                
+        gallery_json = json.dumps(wiki_gallery)
+        
+        # Replace placeholders
+        html_content = template_content
+        replacements = {
+            "{{TITLE}}": self._escape_html(title),
+            "{{REPO_LINK}}": repo_link,
+            "{{WIKI_GALLERY_JSON}}": gallery_json,
+        }
+        
+        for placeholder, value in replacements.items():
+            html_content = html_content.replace(placeholder, value)
+            
+        # Write output
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_write(output_path, html_content)
     
     def _build_info_content(self, metadata: Optional[Dict[str, Any]]) -> str:
         """

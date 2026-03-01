@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeWiki Documentation Portal</title>
+    <title>{{TITLE}}</title>
 
     <!-- Fonts -->
     <link
@@ -692,9 +692,9 @@
 <body>
 
     <header>
-        <div class="header-title">CodeWiki Documentation Portal</div>
+        <div class="header-title">{{TITLE}}</div>
         <div class="header-controls">
-            <a href="https://github.com/jj4jj/CodeWiki" class="repo-link" target="_blank">🔗 View Repository</a>
+            {{REPO_LINK}}
         </div>
     </header>
 
@@ -762,7 +762,7 @@
 
         <!-- Data Injection -->
         <script>
-            const WIKI_GALLERY = JSON.parse(`[{"id": "codewiki", "name": "Codewiki", "path": "codewiki", "description": "Documentation for codewiki", "statistics": {"total_components": 205, "leaf_nodes": 56, "max_depth": 4}, "languages": ["zh"]}]` || '[]');
+            const WIKI_GALLERY = JSON.parse(`{{WIKI_GALLERY_JSON}}` || '[]');
 
             // Single wiki fallback data (if accessed directly inside docs folder via old command)
             const FALLBACK_MODULE_TREE = {};
