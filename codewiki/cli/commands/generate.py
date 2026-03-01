@@ -58,6 +58,11 @@ def parse_patterns(patterns_str: str) -> List[str]:
     help="Generate index.html for GitHub Pages deployment",
 )
 @click.option(
+    "--index-page",
+    is_flag=True,
+    help="Generate a high-tech index portal with gallery support",
+)
+@click.option(
     "--no-cache",
     is_flag=True,
     help="Force full regeneration, ignoring cache",
@@ -169,6 +174,7 @@ def generate_command(
     output: str,
     create_branch: bool,
     github_pages: bool,
+    index_page: bool,
     no_cache: bool,
     include: Optional[str],
     exclude: Optional[str],
@@ -367,6 +373,7 @@ def generate_command(
         generation_options = GenerationOptions(
             create_branch=create_branch,
             github_pages=github_pages,
+            index_page=index_page,
             no_cache=no_cache,
             custom_output=output if output != "docs/codewiki" else None
         )
@@ -443,7 +450,8 @@ def generate_command(
                 'concurrency': max(1, concurrency),
             },
             verbose=verbose,
-            generate_html=github_pages
+            generate_html=github_pages,
+            generate_index_page=index_page
         )
         
         # Run generation

@@ -23,6 +23,7 @@ class GenerationOptions:
     """Options for documentation generation."""
     create_branch: bool = False
     github_pages: bool = False
+    index_page: bool = False
     no_cache: bool = False
     custom_output: Optional[str] = None
 

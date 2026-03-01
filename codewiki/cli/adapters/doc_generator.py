@@ -37,7 +37,8 @@ class CLIDocumentationGenerator:
         output_dir: Path,
         config: Dict[str, Any],
         verbose: bool = False,
-        generate_html: bool = False
+        generate_html: bool = False,
+        generate_index_page: bool = False
     ):
         """
         Initialize the CLI documentation generator.
@@ -54,7 +55,15 @@ class CLIDocumentationGenerator:
         self.config = config
         self.verbose = verbose
         self.generate_html = generate_html
-        self.progress_tracker = ProgressTracker(total_stages=5, verbose=verbose)
+        self.generate_index_page = generate_index_page
+        
+        total_stages = 5
+        if generate_index_page and not generate_html:
+            total_stages = 5
+        elif generate_index_page and generate_html:
+            total_stages = 6
+            
+        self.progress_tracker = ProgressTracker(total_stages=total_stages, verbose=verbose)
         self.job = DocumentationJob()
         
         # Setup job metadata
@@ -152,6 +161,10 @@ class CLIDocumentationGenerator:
             # Stage 4: HTML Generation (optional)
             if self.generate_html:
                 self._run_html_generation()
+                
+            # Stage 4/5: Index Page Generation (optional)
+            if self.generate_index_page:
+                self._run_index_generation()
             
             # Stage 5: Finalization (metadata already created by backend)
             self._finalize_job()
@@ -258,7 +271,8 @@ class CLIDocumentationGenerator:
     
     def _run_html_generation(self):
         """Run HTML generation stage."""
-        self.progress_tracker.start_stage(4, "HTML Generation")
+        stage_num = 4
+        self.progress_tracker.start_stage(stage_num, "HTML Generation")
         
         from codewiki.cli.html_generator import HTMLGenerator
         
@@ -285,6 +299,38 @@ class CLIDocumentationGenerator:
         if self.verbose:
             self.progress_tracker.update_stage(1.0, "Generated index.html")
         
+        self.progress_tracker.complete_stage()
+        
+    def _run_index_generation(self):
+        """Run Index Page generation stage."""
+        stage_num = 5 if self.generate_html else 4
+        self.progress_tracker.start_stage(stage_num, "Index Page Generation")
+        
+        from codewiki.cli.html_generator import HTMLGenerator
+        
+        html_generator = HTMLGenerator()
+        
+        if self.verbose:
+            self.progress_tracker.update_stage(0.5, "Generating index portal with gallery support...")
+            
+        repo_info = html_generator.detect_repository_info(self.repo_path)
+        
+        # Parent directory of output_dir is where we place the index portal (e.g. docs/)
+        docs_root = self.output_dir.parent
+        output_path = docs_root / "index.html"
+        
+        html_generator.generate_index_portal(
+            output_path=output_path,
+            title=f"{repo_info['name']} Documentation Portal",
+            repository_url=repo_info['url'],
+            docs_root=docs_root
+        )
+        
+        self.job.files_generated.append("index.html")
+        
+        if self.verbose:
+            self.progress_tracker.update_stage(1.0, f"Generated index portal at {output_path}")
+            
         self.progress_tracker.complete_stage()
     
     def _finalize_job(self):
