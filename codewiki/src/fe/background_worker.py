@@ -9,6 +9,7 @@ import time
 import threading
 import subprocess
 import asyncio
+import traceback
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
@@ -336,10 +337,12 @@ class BackgroundWorker:
             # Update job status with error
             job.status = 'failed'
             job.completed_at = datetime.now()
-            job.error_message = str(e)
+            job.error_message = traceback.format_exc()
             job.progress = f"Failed: {str(e)}"
             
             print(f"Job {job_id}: Failed with error: {e}")
+            # Save job status to disk
+            self.save_job_statuses()
         
         finally:
             # Cleanup temporary repository

@@ -249,7 +249,7 @@ WEB_INTERFACE_TEMPLATE = """
             
             {% if recent_jobs %}
             <div class="recent-jobs">
-                <h3>Recent Jobs</h3>
+                <h3>Available Documentation</h3>
                 {% for job in recent_jobs %}
                 <div class="job-item">
                     <div class="job-header">
@@ -1392,7 +1392,17 @@ ADMIN_TEMPLATE = """
                                 {{ job.status }}
                             </span>
                         </td>
-                        <td>{{ job.progress }}</td>
+                        <td>
+                            <div>{{ job.progress }}</div>
+                            {% if job.status == 'failed' and job.error_message %}
+                            <details class="error-details" style="margin-top: 0.5rem;">
+                                <summary style="cursor: pointer; color: #b91c1c; font-weight: 600;">
+                                    View Error
+                                </summary>
+                                <pre style="white-space: pre-wrap; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">{{ job.error_message }}</pre>
+                            </details>
+                            {% endif %}
+                        </td>
                         <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
                             <div class="actions">
@@ -1503,10 +1513,7 @@ ADMIN_TEMPLATE = """
             }
         }
         
-        // Auto-refresh every 30 seconds
-        setInterval(function() {
-            window.location.reload();
-        }, 30000);
+        // Auto-refresh disabled to prevent input loss while editing.
     </script>
 </body>
 </html>
