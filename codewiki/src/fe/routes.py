@@ -17,7 +17,7 @@ from .models import JobStatus, JobStatusResponse, GenerationOptions
 from .github_processor import GitHubRepoProcessor
 from .background_worker import BackgroundWorker
 from .cache_manager import CacheManager
-from .templates import ADMIN_TEMPLATE
+from .templates import ADMIN_TEMPLATE, WEB_INTERFACE_TEMPLATE
 from .template_utils import render_template
 from .config import WebAppConfig
 from codewiki.src.utils import file_manager
