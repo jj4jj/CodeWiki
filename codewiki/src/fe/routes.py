@@ -10,6 +10,7 @@ from dataclasses import asdict
 from traceback import format_exc
 
 from fastapi import Form, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from .models import JobStatus, JobStatusResponse, GenerationOptions
@@ -31,13 +32,7 @@ class WebRoutes:
     
     async def index_get(self, request: Request) -> HTMLResponse:
         """Main page with form for submitting Git repositories."""
-        # Get completed docs list
-        all_jobs = self.background_worker.get_all_jobs()
-        recent_jobs = sorted(
-            [job for job in all_jobs.values() if job.status == 'completed'],
-            key=lambda x: x.created_at,
-            reverse=True
-        )
+        recent_jobs = self._collect_completed_docs()
         
         context = {
             "message": None,
@@ -139,13 +134,7 @@ class WebRoutes:
                         message = f"Failed to add repository to queue: {str(e)}\n{format_exc()}"
                         message_type = "error"
         
-        # Get completed docs list
-        all_jobs = self.background_worker.get_all_jobs()
-        recent_jobs = sorted(
-            [job for job in all_jobs.values() if job.status == 'completed'],
-            key=lambda x: x.created_at,
-            reverse=True
-        )
+        recent_jobs = self._collect_completed_docs()
         
         context = {
             "message": message,
@@ -325,6 +314,46 @@ class WebRoutes:
         for job_id in expired_jobs:
             if job_id in self.background_worker.job_status:
                 del self.background_worker.job_status[job_id]
+
+    def _collect_completed_docs(self):
+        """Collect completed docs from job status and cache index."""
+        completed = {}
+        
+        all_jobs = self.background_worker.get_all_jobs()
+        for job in all_jobs.values():
+            if job.status == 'completed' and job.docs_path:
+                completed[job.job_id] = job
+        
+        # Add cached docs that aren't tracked in job status
+        for entry in self.cache_manager.cache_index.values():
+            if not entry.docs_path or not Path(entry.docs_path).exists():
+                continue
+            try:
+                repo_info = GitHubRepoProcessor.get_repo_info(entry.repo_url)
+                job_id = self._repo_full_name_to_job_id(repo_info['full_name'])
+            except Exception:
+                continue
+            
+            if job_id in completed:
+                continue
+            
+            completed[job_id] = JobStatus(
+                job_id=job_id,
+                repo_url=entry.repo_url,
+                title=GitHubRepoProcessor.generate_title(entry.repo_url),
+                status='completed',
+                created_at=entry.created_at,
+                completed_at=entry.created_at,
+                docs_path=entry.docs_path,
+                progress="Retrieved from cache",
+                commit_id=None
+            )
+        
+        return sorted(
+            completed.values(),
+            key=lambda x: x.completed_at or x.created_at,
+            reverse=True
+        )
     
     async def list_tasks(self, status_filter: str = None) -> JSONResponse:
         """API endpoint to list all tasks with optional status filter."""
@@ -352,7 +381,7 @@ class WebRoutes:
             ))
         
         jobs_list.sort(key=lambda x: x.created_at, reverse=True)
-        return JSONResponse(content=[job.dict() for job in jobs_list])
+        return JSONResponse(content=jsonable_encoder(jobs_list))
     
     async def create_task_api(
         self,
