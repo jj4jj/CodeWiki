@@ -120,7 +120,7 @@ class BackgroundWorker:
         if self._is_stop_requested(job.job_id):
             raise JobStoppedError("Task stopped by user")
 
-    def _attach_backend_job_logger(self, job: JobStatus):
+    def _attach_backend_job_logger(self, job: JobStatus, level: int = logging.INFO):
         """
         Attach a temporary INFO handler for backend logger to the job log.
 
@@ -131,13 +131,13 @@ class BackgroundWorker:
         old_propagate = backend_logger.propagate
 
         handler = _JobLogHandler(self, job)
-        handler.setLevel(logging.INFO)
+        handler.setLevel(level)
         handler.setFormatter(
             logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
         )
 
         backend_logger.addHandler(handler)
-        backend_logger.setLevel(logging.INFO)
+        backend_logger.setLevel(level)
         backend_logger.propagate = False
         return backend_logger, handler, old_level, old_propagate
 
@@ -525,8 +525,8 @@ class BackgroundWorker:
             
             self._append_job_log(job, f"Effective docs output: {config.docs_dir}")
             if verbose_requested:
-                backend_logger_ctx = self._attach_backend_job_logger(job)
-                self._append_job_log(job, "Streaming backend INFO logs to job log")
+                backend_logger_ctx = self._attach_backend_job_logger(job, level=logging.DEBUG)
+                self._append_job_log(job, "Streaming backend DEBUG logs to job log")
             self._set_progress(job, "Generating documentation...")
             self._check_stop_requested(job)
             
@@ -541,6 +541,8 @@ class BackgroundWorker:
                 with self._stop_lock:
                     self._active_async_tasks[job_id] = (loop, doc_task)
 
+                heartbeat_every = 30.0
+                next_heartbeat = time.monotonic() + heartbeat_every
                 while not doc_task.done():
                     if self._is_stop_requested(job_id):
                         doc_task.cancel()
@@ -549,6 +551,13 @@ class BackgroundWorker:
                             asyncio.wait_for(asyncio.shield(doc_task), timeout=0.5)
                         )
                     except asyncio.TimeoutError:
+                        if verbose_requested and time.monotonic() >= next_heartbeat:
+                            elapsed = int((datetime.now() - job.started_at).total_seconds())
+                            self._append_job_log(
+                                job,
+                                f"Verbose heartbeat: documentation generation still running ({elapsed}s elapsed)"
+                            )
+                            next_heartbeat = time.monotonic() + heartbeat_every
                         continue
                     except asyncio.CancelledError:
                         break
