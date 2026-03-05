@@ -54,6 +54,13 @@ try:
 except Exception:
     md = MarkdownIt("commonmark").enable(["table"])
 
+# `gfm-like` enables linkify by default, which requires optional dependency `linkify-it-py`.
+# Keep rendering robust in minimal runtime images by disabling linkify if not installed.
+try:
+    import linkify_it  # type: ignore # noqa: F401
+except Exception:
+    md.options["linkify"] = False
+
 
 _TABLE_HEADER_RE = re.compile(r"^\|?.+\|.+\|?$")
 _TABLE_SEPARATOR_RE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
