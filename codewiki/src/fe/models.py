@@ -80,6 +80,23 @@ class RepositorySubmission(BaseModel):
     repo_url: HttpUrl
 
 
+class ChatMessage(BaseModel):
+    """Single chat message payload."""
+    role: str
+    content: str
+
+
+class DocChatRequest(BaseModel):
+    """Doc page chat request payload (A2UI-friendly)."""
+    protocol: Optional[str] = "a2ui-0.1"
+    session_id: Optional[str] = None
+    message: Optional[str] = None
+    messages: Optional[list[ChatMessage]] = None
+    current_page: Optional[str] = "overview.md"
+    version: Optional[str] = ""
+    lang: Optional[str] = ""
+
+
 class JobStatusResponse(BaseModel):
     """Pydantic model for job status API response."""
     job_id: str

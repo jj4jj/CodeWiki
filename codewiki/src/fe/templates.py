@@ -805,8 +805,113 @@ __CW_SHARED_UI_TOKENS__
         .content {
             flex: 1;
             margin-left: 308px;
+            margin-right: 360px;
             padding: 28px 38px;
             min-width: 0;
+        }
+
+        .chat-panel {
+            width: 360px;
+            border-left: 1px solid var(--line);
+            background: var(--surface);
+            position: fixed;
+            inset: 0 0 0 auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 14px 14px 10px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface-soft);
+        }
+
+        .chat-title {
+            font-size: 0.92rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .chat-subtitle {
+            font-size: 0.76rem;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .chat-bubble {
+            margin-bottom: 10px;
+            border: 1px solid var(--line);
+            background: var(--surface-soft);
+            padding: 8px 9px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-bubble.user {
+            background: #eaf1f8;
+            border-color: #d7e2ee;
+        }
+
+        .chat-bubble.assistant {
+            background: #f8fafc;
+        }
+
+        .chat-input-wrap {
+            padding: 10px 12px 12px;
+            border-top: 1px solid var(--line);
+            background: var(--surface);
+        }
+
+        .chat-input {
+            width: 100%;
+            min-height: 86px;
+            resize: vertical;
+            border: 1px solid var(--line);
+            background: #fff;
+            color: var(--text);
+            border-radius: var(--radius-sm);
+            padding: 8px;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            margin-bottom: 8px;
+        }
+
+        .chat-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .chat-hint {
+            font-size: 0.72rem;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+
+        .chat-send {
+            border: 1px solid var(--primary);
+            background: var(--primary);
+            color: #fff;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            padding: 7px 12px;
+            cursor: pointer;
+        }
+
+        .chat-send:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .logo {
@@ -1043,7 +1148,18 @@ __CW_SHARED_UI_TOKENS__
             overflow-x: auto;
         }
 
-        @media (max-width: 920px) {
+        @media (max-width: 1320px) {
+            .chat-panel {
+                width: 320px;
+            }
+
+            .content {
+                margin-right: 320px;
+                padding: 22px 24px;
+            }
+        }
+
+        @media (max-width: 980px) {
             .sidebar {
                 width: 100%;
                 position: relative;
@@ -1052,7 +1168,19 @@ __CW_SHARED_UI_TOKENS__
 
             .content {
                 margin-left: 0;
+                margin-right: 0;
                 padding: 16px;
+            }
+
+            .chat-panel {
+                width: auto;
+                position: relative;
+                border-left: none;
+                border-top: 1px solid var(--line);
+            }
+
+            .chat-messages {
+                max-height: 260px;
             }
 
             .docs-shell {
@@ -1173,6 +1301,27 @@ __CW_SHARED_UI_TOKENS__
                 {{ content | safe }}
             </div>
         </main>
+
+        <aside class="chat-panel" data-chat-api="{{ chat_api_url }}" data-chat-protocol="{{ chat_protocol }}">
+            <div class="chat-header">
+                <div class="chat-title">CodeWikiAgent</div>
+                <div class="chat-subtitle">
+                    CopilotKit/A2UI 风格会话，默认连接当前文档对应代码仓库（只读）。
+                </div>
+            </div>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-wrap">
+                <textarea
+                    id="chatInput"
+                    class="chat-input"
+                    placeholder="输入你想了解的实现细节、模块关系、调用链..."
+                ></textarea>
+                <div class="chat-actions">
+                    <div class="chat-hint">Agent 会自动检索文档与代码。代码目录为只读。</div>
+                    <button id="chatSendBtn" class="chat-send" type="button">发送</button>
+                </div>
+            </div>
+        </aside>
     </div>
     
     <script>
@@ -1254,6 +1403,89 @@ __CW_SHARED_UI_TOKENS__
                     params.delete('version');
                     const query = params.toString();
                     window.location.href = '/static-docs/' + targetJobId + '/overview.md' + (query ? ('?' + query) : '');
+                });
+            }
+
+            const chatPanel = document.querySelector('.chat-panel');
+            const chatMessagesEl = document.getElementById('chatMessages');
+            const chatInputEl = document.getElementById('chatInput');
+            const chatSendBtn = document.getElementById('chatSendBtn');
+            const chatHistory = [];
+            const chatSessionKey = 'cw_chat_session_{{ job_id }}';
+            let chatSessionId = window.sessionStorage.getItem(chatSessionKey) || '';
+
+            const appendBubble = (role, text) => {
+                if (!chatMessagesEl) return;
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-bubble ' + role;
+                bubble.textContent = text || '';
+                chatMessagesEl.appendChild(bubble);
+                chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+            };
+
+            if (chatMessagesEl) {
+                appendBubble(
+                    'assistant',
+                    '你好，我是 CodeWikiAgent。你可以问我当前模块实现、调用链、关键函数逻辑。'
+                );
+            }
+
+            const sendChat = async () => {
+                const apiUrl = chatPanel ? chatPanel.getAttribute('data-chat-api') : '';
+                if (!apiUrl || !chatInputEl || !chatSendBtn) return;
+
+                const question = (chatInputEl.value || '').trim();
+                if (!question) return;
+
+                appendBubble('user', question);
+                chatHistory.push({ role: 'user', content: question });
+                chatInputEl.value = '';
+                chatSendBtn.disabled = true;
+
+                const payload = {
+                    protocol: (chatPanel && chatPanel.getAttribute('data-chat-protocol')) || 'a2ui-0.1',
+                    session_id: chatSessionId || '',
+                    message: question,
+                    messages: chatHistory.slice(-12),
+                    current_page: '{{ current_page }}',
+                    version: '{{ current_version }}',
+                    lang: '{{ current_lang }}'
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error('HTTP ' + response.status + ': ' + text);
+                    }
+                    const data = await response.json();
+                    const answer = (data && (data.output || (data.messages && data.messages[0] && data.messages[0].content))) || '';
+                    if (data && data.session_id) {
+                        chatSessionId = data.session_id;
+                        window.sessionStorage.setItem(chatSessionKey, chatSessionId);
+                    }
+                    chatHistory.push({ role: 'assistant', content: answer || 'No response' });
+                    appendBubble('assistant', answer || 'No response');
+                } catch (error) {
+                    appendBubble('assistant', '请求失败: ' + (error && error.message ? error.message : String(error)));
+                } finally {
+                    chatSendBtn.disabled = false;
+                }
+            };
+
+            if (chatSendBtn) {
+                chatSendBtn.addEventListener('click', sendChat);
+            }
+            if (chatInputEl) {
+                chatInputEl.addEventListener('keydown', function(event) {
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                        event.preventDefault();
+                        sendChat();
+                    }
                 });
             }
             mermaid.init(undefined, document.querySelectorAll('.mermaid'));

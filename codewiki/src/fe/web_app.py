@@ -19,6 +19,7 @@ from .cache_manager import CacheManager
 from .background_worker import BackgroundWorker
 from .routes import WebRoutes
 from .config import WebAppConfig
+from .models import DocChatRequest
 
 
 # Initialize FastAPI app
@@ -285,6 +286,12 @@ async def serve_generated_docs(job_id: str, filename: str = "overview.md", versi
     if not filename: 
         filename = "overview.md"
     return await web_routes.serve_generated_docs(job_id, filename, version, lang)
+
+
+@app.post("/api/docs/{job_id}/chat")
+async def docs_chat(job_id: str, payload: DocChatRequest = Body(...)):
+    """A2UI-style doc chat endpoint powered by CodeWikiAgent."""
+    return await web_routes.docs_chat(job_id, payload)
 
 
 def main():

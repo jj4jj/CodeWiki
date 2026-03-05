@@ -4,6 +4,7 @@ Configuration settings for the CodeWiki web application.
 """
 
 import os
+import json
 from pathlib import Path
 
 
@@ -15,6 +16,28 @@ def _read_int_env(name: str, default: int) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return default
+
+
+def _read_csv_or_json_list_env(name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(name)
+    if not raw:
+        return list(default)
+
+    value = raw.strip()
+    if not value:
+        return list(default)
+
+    if value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                items = [str(item).strip() for item in parsed if str(item).strip()]
+                return items or list(default)
+        except Exception:
+            pass
+
+    items = [part.strip() for part in value.split(",") if part.strip()]
+    return items or list(default)
 
 
 class WebAppConfig:
@@ -48,6 +71,36 @@ class WebAppConfig:
     # Git settings
     CLONE_TIMEOUT = 300
     CLONE_DEPTH = 1
+
+    # Doc chat agent model settings
+    AGENT_MODEL_API_KEY = os.getenv(
+        "AGENT_MODEL_API_KEY",
+        os.getenv("ANTHROPIC_API_KEY", os.getenv("LLM_API_KEY", "")),
+    )
+    AGENT_MODEL_BASE_URL = os.getenv(
+        "AGENT_MODEL_BASE_URL",
+        os.getenv("LLM_BASE_URL", "https://api.anthropic.com/v1"),
+    )
+    AGENT_MODEL_NAMES = _read_csv_or_json_list_env(
+        "AGENT_MODEL_NAMES",
+        ["kimi-k2.5"],
+    )
+    AGENT_MODEL_TIMEOUT_SECONDS = max(
+        10,
+        _read_int_env("AGENT_MODEL_TIMEOUT_SECONDS", 120),
+    )
+    CHAT_SESSION_TTL_MINUTES = max(
+        10,
+        _read_int_env("CHAT_SESSION_TTL_MINUTES", 180),
+    )
+    CHAT_SHELL_TIMEOUT_SECONDS = max(
+        1,
+        min(120, _read_int_env("CHAT_SHELL_TIMEOUT_SECONDS", 20)),
+    )
+    CHAT_MAX_TOOL_OUTPUT_CHARS = max(
+        1024,
+        _read_int_env("CHAT_MAX_TOOL_OUTPUT_CHARS", 12000),
+    )
     
     @classmethod
     def ensure_directories(cls):

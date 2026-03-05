@@ -15,13 +15,14 @@ from fastapi import Form, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
-from .models import JobStatus, JobStatusResponse, GenerationOptions
+from .models import JobStatus, JobStatusResponse, GenerationOptions, DocChatRequest
 from .github_processor import GitHubRepoProcessor
 from .background_worker import BackgroundWorker
 from .cache_manager import CacheManager
 from .templates import ADMIN_TEMPLATE, WEB_INTERFACE_TEMPLATE
 from .template_utils import render_template
 from .config import WebAppConfig
+from .chat_agent import CodeWikiChatService
 from codewiki.src.utils import file_manager
 from codewiki.src.be.doc_type_profiles import (
     list_doc_type_profiles,
@@ -38,6 +39,16 @@ class WebRoutes:
     def __init__(self, background_worker: BackgroundWorker, cache_manager: CacheManager):
         self.background_worker = background_worker
         self.cache_manager = cache_manager
+        self.chat_service = None
+
+    def _get_chat_service(self) -> CodeWikiChatService:
+        """Lazily create chat service only when chat is actually used."""
+        if self.chat_service is None:
+            self.chat_service = CodeWikiChatService(
+                background_worker=self.background_worker,
+                cache_manager=self.cache_manager,
+            )
+        return self.chat_service
     
     async def index_get(self, request: Request) -> HTMLResponse:
         """Main page with form for submitting Git repositories."""
@@ -357,12 +368,55 @@ class WebRoutes:
                 "view_options": view_options,
                 "current_view_job_id": job_id,
                 "current_doc_type": current_doc_type,
+                "chat_api_url": f"/api/docs/{job_id}/chat",
+                "chat_protocol": "a2ui-0.1",
             }
             
             return HTMLResponse(content=render_template(DOCS_VIEW_TEMPLATE, context))
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error reading {filename}: {e}\n{format_exc()}")
+
+    async def docs_chat(self, job_id: str, payload: DocChatRequest) -> JSONResponse:
+        """Doc page chat endpoint backed by CodeWikiAgent."""
+        message_text = (payload.message or "").strip()
+        message_items: list[dict[str, str]] = []
+        if payload.messages:
+            for item in payload.messages:
+                if hasattr(item, "model_dump"):
+                    obj = item.model_dump()
+                else:
+                    obj = {"role": getattr(item, "role", ""), "content": getattr(item, "content", "")}
+                role = str(obj.get("role", "")).strip().lower() or "user"
+                content = str(obj.get("content", "")).strip()
+                if not content:
+                    continue
+                message_items.append({"role": role, "content": content})
+
+        if not message_text:
+            for item in reversed(message_items):
+                if item["role"] == "user":
+                    message_text = item["content"]
+                    break
+
+        if not message_text:
+            raise HTTPException(status_code=400, detail="message is required")
+
+        try:
+            response = await self._get_chat_service().chat(
+                job_id=job_id,
+                user_query=message_text,
+                session_id=(payload.session_id or "").strip(),
+                current_page=(payload.current_page or "overview.md").strip(),
+                messages=message_items,
+            )
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
+        return JSONResponse(content=response)
     
     def _normalize_github_url(self, url: str) -> str:
         """Normalize Git repository URL for consistent comparison."""
