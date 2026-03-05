@@ -12,7 +12,7 @@ Features:
 """
 
 import argparse
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .cache_manager import CacheManager
@@ -34,7 +34,8 @@ cache_manager = CacheManager(
 )
 background_worker = BackgroundWorker(
     cache_manager=cache_manager, 
-    temp_dir=WebAppConfig.TEMP_DIR
+    temp_dir=WebAppConfig.TEMP_DIR,
+    worker_concurrency=WebAppConfig.TASK_CONCURRENCY,
 )
 web_routes = WebRoutes(background_worker=background_worker, cache_manager=cache_manager)
 
@@ -120,6 +121,24 @@ async def create_task(
         custom_cli_args,
         concurrency,
     )
+
+
+@app.get("/api/doc-types")
+async def list_doc_types():
+    """API endpoint to list available doc-type profiles."""
+    return await web_routes.list_doc_types()
+
+
+@app.put("/api/doc-types/{doc_type}")
+async def upsert_doc_type(doc_type: str, payload: dict = Body(...)):
+    """API endpoint to create/update a doc-type profile."""
+    return await web_routes.upsert_doc_type(doc_type, payload)
+
+
+@app.delete("/api/doc-types/{doc_type}")
+async def delete_doc_type(doc_type: str):
+    """API endpoint to delete a custom doc-type profile."""
+    return await web_routes.delete_doc_type(doc_type)
 
 
 @app.delete("/api/tasks/{job_id}")
@@ -208,6 +227,51 @@ async def admin_post(
     )
 
 
+@app.post("/admin/doc-types", response_class=HTMLResponse)
+async def admin_doc_type_post(
+    request: Request,
+    doc_type: str = Form(...),
+    display_name: str = Form(""),
+    description: str = Form(""),
+    prompt: str = Form(""),
+    include: str = Form(""),
+    exclude: str = Form(""),
+    focus: str = Form(""),
+    skills: str = Form(""),
+    max_tokens: str = Form(""),
+    max_token_per_module: str = Form(""),
+    max_token_per_leaf_module: str = Form(""),
+    max_depth: str = Form(""),
+    profile_concurrency: str = Form(""),
+):
+    """Handle doc-type profile create/update from admin page."""
+    return await web_routes.admin_doc_type_post(
+        request,
+        doc_type,
+        display_name,
+        description,
+        prompt,
+        include,
+        exclude,
+        focus,
+        skills,
+        max_tokens,
+        max_token_per_module,
+        max_token_per_leaf_module,
+        max_depth,
+        profile_concurrency,
+    )
+
+
+@app.post("/admin/doc-types/delete", response_class=HTMLResponse)
+async def admin_doc_type_delete(
+    request: Request,
+    doc_type: str = Form(...),
+):
+    """Handle doc-type profile delete from admin page."""
+    return await web_routes.admin_doc_type_delete(request, doc_type)
+
+
 @app.get("/docs/{job_id}")
 async def view_docs(job_id: str, version: str = "", lang: str = ""):
     """View generated documentation."""
@@ -252,17 +316,33 @@ def main():
         action="store_true",
         help="Enable auto-reload for development"
     )
+    parser.add_argument(
+        "--task-concurrency",
+        type=int,
+        default=WebAppConfig.TASK_CONCURRENCY,
+        help=(
+            "Parallel documentation tasks in worker queue "
+            f"(default: {WebAppConfig.TASK_CONCURRENCY}, max: {WebAppConfig.MAX_TASK_CONCURRENCY})"
+        ),
+    )
     
     args = parser.parse_args()
     
     # Ensure required directories exist
     WebAppConfig.ensure_directories()
+
+    # Configure worker pool size before startup
+    background_worker.configure_worker_concurrency(args.task_concurrency)
     
     # Start background worker
     background_worker.start()
     
     print(f"🚀 CodeWiki Web Application starting...")
     print(f"🌐 Server running at: http://{args.host}:{args.port}")
+    print(
+        "⚙️  Task concurrency: "
+        f"{background_worker.worker_concurrency} (max {WebAppConfig.MAX_TASK_CONCURRENCY})"
+    )
     print(f"📁 Cache directory: {WebAppConfig.get_absolute_path(WebAppConfig.CACHE_DIR)}")
     print(f"🗂️  Temp directory: {WebAppConfig.get_absolute_path(WebAppConfig.TEMP_DIR)}")
     print("\nPress Ctrl+C to stop the server")

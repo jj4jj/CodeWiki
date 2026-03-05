@@ -23,6 +23,12 @@ from .templates import ADMIN_TEMPLATE, WEB_INTERFACE_TEMPLATE
 from .template_utils import render_template
 from .config import WebAppConfig
 from codewiki.src.utils import file_manager
+from codewiki.src.be.doc_type_profiles import (
+    list_doc_type_profiles,
+    upsert_doc_type_profile,
+    delete_doc_type_profile,
+    normalize_doc_type_name,
+)
 
 
 class WebRoutes:
@@ -117,7 +123,7 @@ class WebRoutes:
                         progress="Retrieved from cache",
                         commit_id=commit_id if commit_id else None
                     )
-                    self.background_worker.job_status[job_id] = job
+                    self.background_worker.set_job_status(job_id, job)
                 else:
                     # Add to queue
                     try:
@@ -259,7 +265,7 @@ class WebRoutes:
                     progress="Loaded from cache",
                     commit_id=None  # No commit info available from cache
                 )
-                self.background_worker.job_status[job_id] = job
+                self.background_worker.set_job_status(job_id, job)
                 self.background_worker.save_job_statuses()
             else:
                 raise HTTPException(status_code=404, detail="Documentation not found")
@@ -593,8 +599,7 @@ class WebRoutes:
         ]
         
         for job_id in expired_jobs:
-            if job_id in self.background_worker.job_status:
-                del self.background_worker.job_status[job_id]
+            self.background_worker.remove_job_status(job_id)
 
     def _collect_completed_docs(self):
         """Collect completed docs from job status and cache index."""
@@ -776,6 +781,49 @@ class WebRoutes:
             "status": "queued",
             "message": "Task created successfully"
         })
+
+    async def list_doc_types(self) -> JSONResponse:
+        """API endpoint to list all available doc-type profiles."""
+        profiles = list_doc_type_profiles()
+        items = []
+        for key, profile in profiles.items():
+            item = dict(profile)
+            item["name"] = key
+            items.append(item)
+        items.sort(key=lambda x: x["name"])
+        return JSONResponse(content={"doc_types": items})
+
+    async def upsert_doc_type(self, doc_type: str, payload: dict) -> JSONResponse:
+        """API endpoint to create/update one doc-type profile."""
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="JSON payload must be an object")
+        try:
+            updated = upsert_doc_type_profile(doc_type, payload)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return JSONResponse(content={
+            "message": "Doc type profile saved",
+            "doc_type": updated,
+        })
+
+    async def delete_doc_type(self, doc_type: str) -> JSONResponse:
+        """API endpoint to delete one custom doc-type profile override."""
+        key = normalize_doc_type_name(doc_type)
+        if not key:
+            raise HTTPException(status_code=400, detail="Invalid doc_type")
+        try:
+            deleted = delete_doc_type_profile(key)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Custom doc type profile not found (or already removed)",
+            )
+        return JSONResponse(content={
+            "message": "Doc type profile removed",
+            "doc_type": key,
+        })
     
     async def delete_task(self, job_id: str) -> JSONResponse:
         """API endpoint to delete a task."""
@@ -787,9 +835,8 @@ class WebRoutes:
         if job.status == 'processing':
             raise HTTPException(status_code=400, detail="Cannot delete a task that is currently processing")
         
-        if job_id in self.background_worker.job_status:
-            del self.background_worker.job_status[job_id]
-            self.background_worker.save_job_statuses()
+        self.background_worker.remove_job_status(job_id)
+        self.background_worker.save_job_statuses()
         
         return JSONResponse(content={"message": "Task deleted successfully"})
 
@@ -827,7 +874,7 @@ class WebRoutes:
             options=options
         )
 
-        self.background_worker.job_status[job_id] = new_job
+        self.background_worker.set_job_status(job_id, new_job)
         self.background_worker.add_job(job_id, new_job)
         self.background_worker.save_job_statuses()
 
@@ -889,23 +936,7 @@ class WebRoutes:
     
     async def admin_get(self, request: Request) -> HTMLResponse:
         """Admin page for managing tasks."""
-        all_jobs = self.background_worker.get_all_jobs()
-        jobs_list = sorted(all_jobs.values(), key=lambda x: x.created_at, reverse=True)
-        
-        queued_count = sum(1 for j in jobs_list if j.status == 'queued')
-        processing_count = sum(1 for j in jobs_list if j.status == 'processing')
-        completed_count = sum(1 for j in jobs_list if j.status == 'completed')
-        failed_count = sum(1 for j in jobs_list if j.status == 'failed')
-        
-        context = {
-            "jobs": jobs_list,
-            "queued_count": queued_count,
-            "processing_count": processing_count,
-            "completed_count": completed_count,
-            "failed_count": failed_count,
-            "total_count": len(jobs_list)
-        }
-        
+        context = self._build_admin_context()
         return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context))
     
     async def admin_post(self, request: Request, 
@@ -937,17 +968,11 @@ class WebRoutes:
         commit_id = commit_id.strip() if commit_id else ""
         
         if not repo_url:
-            context = {
-                "error": "Repository URL is required",
-                "jobs": self.background_worker.get_all_jobs().values()
-            }
+            context = self._build_admin_context(error="Repository URL is required")
             return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
         
         if not GitHubRepoProcessor.is_valid_github_url(repo_url):
-            context = {
-                "error": "Invalid Git repository URL",
-                "jobs": self.background_worker.get_all_jobs().values()
-            }
+            context = self._build_admin_context(error="Invalid Git repository URL")
             return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
         
         normalized_repo_url = self._normalize_github_url(repo_url)
@@ -959,10 +984,7 @@ class WebRoutes:
             or normalized_subproject_path.startswith("../")
             or "/../" in normalized_subproject_path
         ):
-            context = {
-                "error": "Invalid subproject path",
-                "jobs": self.background_worker.get_all_jobs().values()
-            }
+            context = self._build_admin_context(error="Invalid subproject path")
             return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
         job_id = self._repo_full_name_to_job_id(
             repo_info['full_name'],
@@ -1002,10 +1024,9 @@ class WebRoutes:
         
         existing_job = self.background_worker.get_job_status(job_id)
         if existing_job and existing_job.status in ['queued', 'processing']:
-            context = {
-                "error": f"Task already exists and is {existing_job.status}",
-                "jobs": self.background_worker.get_all_jobs().values()
-            }
+            context = self._build_admin_context(
+                error=f"Task already exists and is {existing_job.status}"
+            )
             return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=409)
         
         custom_no_cache = bool(options.custom_cli_args and "--no-cache" in options.custom_cli_args)
@@ -1041,7 +1062,142 @@ class WebRoutes:
             )
             self.background_worker.add_job(job_id, job)
         
-        self.background_worker.job_status[job_id] = job
+        self.background_worker.set_job_status(job_id, job)
         self.background_worker.save_job_statuses()
         
         return await self.admin_get(request)
+
+    async def admin_doc_type_post(
+        self,
+        request: Request,
+        doc_type: str = Form(...),
+        display_name: str = Form(""),
+        description: str = Form(""),
+        prompt: str = Form(""),
+        include: str = Form(""),
+        exclude: str = Form(""),
+        focus: str = Form(""),
+        skills: str = Form(""),
+        max_tokens: str = Form(""),
+        max_token_per_module: str = Form(""),
+        max_token_per_leaf_module: str = Form(""),
+        max_depth: str = Form(""),
+        profile_concurrency: str = Form(""),
+    ) -> HTMLResponse:
+        """Handle doc-type profile create/update from admin page."""
+        key = normalize_doc_type_name(doc_type)
+        if not key:
+            context = self._build_admin_context(error="文档类型不能为空")
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+
+        payload = {
+            "display_name": display_name,
+            "description": description,
+            "prompt": prompt,
+            "include_patterns": self._csv_to_list(include),
+            "exclude_patterns": self._csv_to_list(exclude),
+            "focus_modules": self._csv_to_list(focus),
+            "skills": self._csv_to_list(skills),
+            "max_tokens": self._str_to_int(max_tokens),
+            "max_token_per_module": self._str_to_int(max_token_per_module),
+            "max_token_per_leaf_module": self._str_to_int(max_token_per_leaf_module),
+            "max_depth": self._str_to_int(max_depth),
+            "concurrency": self._str_to_int(profile_concurrency),
+        }
+
+        try:
+            saved = upsert_doc_type_profile(key, payload)
+        except ValueError as e:
+            context = self._build_admin_context(error=str(e))
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+
+        context = self._build_admin_context(
+            message=f"文档类型模板已保存: {saved.get('name', key)}",
+            message_type="success",
+        )
+        return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context))
+
+    async def admin_doc_type_delete(
+        self,
+        request: Request,
+        doc_type: str = Form(...),
+    ) -> HTMLResponse:
+        """Handle doc-type profile delete from admin page."""
+        key = normalize_doc_type_name(doc_type)
+        if not key:
+            context = self._build_admin_context(error="文档类型不能为空")
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+
+        try:
+            removed = delete_doc_type_profile(key)
+        except ValueError as e:
+            context = self._build_admin_context(error=str(e))
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=400)
+
+        if not removed:
+            context = self._build_admin_context(error=f"未找到可删除的自定义模板: {key}")
+            return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context), status_code=404)
+
+        context = self._build_admin_context(
+            message=f"文档类型模板已删除: {key}",
+            message_type="success",
+        )
+        return HTMLResponse(content=render_template(ADMIN_TEMPLATE, context))
+
+    def _doc_type_options(self):
+        profiles = list_doc_type_profiles()
+        options = []
+        for key in sorted(profiles):
+            profile = profiles[key]
+            options.append({
+                "name": key,
+                "display_name": profile.get("display_name", ""),
+                "description": profile.get("description", ""),
+                "built_in": bool(profile.get("built_in")),
+            })
+        return options
+
+    def _build_admin_context(
+        self,
+        error: str = None,
+        message: str = None,
+        message_type: str = None,
+    ):
+        all_jobs = self.background_worker.get_all_jobs()
+        jobs_list = sorted(all_jobs.values(), key=lambda x: x.created_at, reverse=True)
+        queued_count = sum(1 for j in jobs_list if j.status == 'queued')
+        processing_count = sum(1 for j in jobs_list if j.status == 'processing')
+        completed_count = sum(1 for j in jobs_list if j.status == 'completed')
+        failed_count = sum(1 for j in jobs_list if j.status == 'failed')
+        return {
+            "error": error,
+            "message": message,
+            "message_type": message_type,
+            "jobs": jobs_list,
+            "queued_count": queued_count,
+            "processing_count": processing_count,
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "total_count": len(jobs_list),
+            "doc_type_options": self._doc_type_options(),
+            "task_concurrency": self.background_worker.worker_concurrency,
+            "task_concurrency_max": WebAppConfig.MAX_TASK_CONCURRENCY,
+        }
+
+    def _csv_to_list(self, value: str):
+        text = (value or "").strip()
+        if not text:
+            return None
+        parts = [part.strip() for part in text.split(",")]
+        result = [part for part in parts if part]
+        return result or None
+
+    def _str_to_int(self, value: str):
+        text = (value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = int(text)
+        except ValueError:
+            return None
+        return parsed if parsed > 0 else None

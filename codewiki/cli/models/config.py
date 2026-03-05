@@ -88,14 +88,14 @@ class AgentInstructions:
         additions = []
         
         if self.doc_type:
-            doc_type_instructions = {
-                'api': "Focus on API documentation: endpoints, parameters, return types, and usage examples.",
-                'architecture': "Focus on architecture documentation: system design, component relationships, and data flow.",
-                'user-guide': "Focus on user guide documentation: how to use features, step-by-step tutorials.",
-                'developer': "Focus on developer documentation: code structure, contribution guidelines, and implementation details.",
-            }
-            if self.doc_type.lower() in doc_type_instructions:
-                additions.append(doc_type_instructions[self.doc_type.lower()])
+            try:
+                from codewiki.src.be.doc_type_profiles import get_doc_type_profile
+                profile = get_doc_type_profile(self.doc_type)
+            except Exception:
+                profile = None
+
+            if profile and profile.get("prompt"):
+                additions.append(str(profile["prompt"]))
             else:
                 additions.append(f"Focus on generating {self.doc_type} documentation.")
         

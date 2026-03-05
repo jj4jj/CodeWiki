@@ -7,6 +7,16 @@ import os
 from pathlib import Path
 
 
+def _read_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 class WebAppConfig:
     """Configuration class for web application settings."""
     
@@ -17,6 +27,12 @@ class WebAppConfig:
     
     # Queue settings
     QUEUE_SIZE = 100
+    DEFAULT_TASK_CONCURRENCY = 2
+    MAX_TASK_CONCURRENCY = 8
+    TASK_CONCURRENCY = max(
+        1,
+        min(MAX_TASK_CONCURRENCY, _read_int_env("CODEWIKI_TASK_CONCURRENCY", DEFAULT_TASK_CONCURRENCY)),
+    )
     
     # Cache settings
     CACHE_EXPIRY_DAYS = 365
@@ -44,6 +60,13 @@ class WebAppConfig:
         
         for directory in directories:
             Path(directory).mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def normalize_task_concurrency(cls, value: int | None) -> int:
+        """Clamp worker concurrency into supported range [1, MAX_TASK_CONCURRENCY]."""
+        if value is None:
+            return cls.TASK_CONCURRENCY
+        return max(1, min(cls.MAX_TASK_CONCURRENCY, int(value)))
     
     @classmethod
     def get_absolute_path(cls, path: str) -> str:

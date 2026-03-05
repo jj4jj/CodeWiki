@@ -15,12 +15,13 @@ import argparse
 import logging
 from datetime import datetime
 from pathlib import Path
-from queue import Queue
+from queue import Queue, Empty
 from typing import Dict, Tuple, List, Set
 from dataclasses import asdict
 
 from codewiki.src.be.documentation_generator import DocumentationGenerator
 from codewiki.src.config import Config, MAIN_MODEL
+from codewiki.src.be.doc_type_profiles import get_doc_type_profile
 from .models import JobStatus, GenerationOptions
 from .cache_manager import CacheManager
 from .github_processor import GitHubRepoProcessor
@@ -72,15 +73,24 @@ class JobStoppedError(Exception):
 class BackgroundWorker:
     """Background worker for processing documentation generation jobs."""
     
-    def __init__(self, cache_manager: CacheManager, temp_dir: str = None):
+    def __init__(
+        self,
+        cache_manager: CacheManager,
+        temp_dir: str = None,
+        worker_concurrency: int | None = None,
+    ):
         self.cache_manager = cache_manager
         self.temp_dir = temp_dir or WebAppConfig.TEMP_DIR
         self.running = False
+        self.worker_concurrency = WebAppConfig.normalize_task_concurrency(worker_concurrency)
         self.processing_queue = Queue(maxsize=WebAppConfig.QUEUE_SIZE)
         self.job_status: Dict[str, JobStatus] = {}
+        self._job_status_lock = threading.RLock()
         self.stop_requests: Set[str] = set()
         self._stop_lock = threading.Lock()
+        self._jobs_file_lock = threading.Lock()
         self._active_async_tasks: Dict[str, Tuple[asyncio.AbstractEventLoop, asyncio.Task]] = {}
+        self._worker_threads: List[threading.Thread] = []
         self.jobs_file = Path(WebAppConfig.CACHE_DIR) / "jobs.json"
         self.load_job_statuses()
 
@@ -186,7 +196,7 @@ class BackgroundWorker:
 
     def stop_job(self, job_id: str) -> Tuple[bool, str]:
         """Request stop for a queued/processing job."""
-        job = self.job_status.get(job_id)
+        job = self.get_job_status(job_id)
         if not job:
             return False, "Task not found"
 
@@ -263,31 +273,80 @@ class BackgroundWorker:
                 config.agent_instructions["skills"] = [
                     part.strip() for part in parsed_args.skills.split(",") if part.strip()
                 ]
+
+    def _apply_doc_type_profile_to_config(self, config: Config, doc_type: str, job: JobStatus):
+        """Apply doc-type profile defaults before explicit per-task overrides."""
+        selected = (doc_type or "").strip()
+        if not selected:
+            return
+        profile = get_doc_type_profile(selected)
+        if not profile:
+            self._append_job_log(job, f"Doc type profile not found: {selected}")
+            return
+        config.apply_doc_type_profile_defaults(selected, override_existing=True)
+        self._append_job_log(
+            job,
+            f"Applied doc type profile: {profile.get('name', selected)}",
+        )
+
+    def configure_worker_concurrency(self, value: int):
+        """Configure worker pool size before start()."""
+        if self.running:
+            raise RuntimeError("Cannot change worker concurrency while running")
+        self.worker_concurrency = WebAppConfig.normalize_task_concurrency(value)
     
     def start(self):
         """Start the background worker thread."""
         if not self.running:
             self.running = True
-            thread = threading.Thread(target=self._worker_loop, daemon=True)
-            thread.start()
-            print("Background worker started")
+            self._worker_threads = []
+            for worker_idx in range(self.worker_concurrency):
+                thread = threading.Thread(
+                    target=self._worker_loop,
+                    args=(worker_idx + 1,),
+                    daemon=True,
+                )
+                thread.start()
+                self._worker_threads.append(thread)
+            print(f"Background worker started ({self.worker_concurrency} parallel tasks)")
     
     def stop(self):
         """Stop the background worker."""
         self.running = False
+        for thread in self._worker_threads:
+            try:
+                thread.join(timeout=1.5)
+            except Exception:
+                pass
+        self._worker_threads = []
     
     def add_job(self, job_id: str, job: JobStatus):
         """Add a job to the processing queue."""
-        self.job_status[job_id] = job
+        self.set_job_status(job_id, job)
         self.processing_queue.put(job_id)
     
     def get_job_status(self, job_id: str) -> JobStatus:
         """Get job status by ID."""
-        return self.job_status.get(job_id)
+        with self._job_status_lock:
+            return self.job_status.get(job_id)
     
     def get_all_jobs(self) -> Dict[str, JobStatus]:
         """Get all job statuses."""
-        return self.job_status
+        with self._job_status_lock:
+            return dict(self.job_status)
+
+    def set_job_status(self, job_id: str, job: JobStatus):
+        """Set/replace job status in memory."""
+        with self._job_status_lock:
+            self.job_status[job_id] = job
+
+    def remove_job_status(self, job_id: str) -> bool:
+        """Remove job status entry."""
+        with self._job_status_lock:
+            if job_id not in self.job_status:
+                return False
+            del self.job_status[job_id]
+            return True
     
     def load_job_statuses(self):
         """Load job statuses from disk."""
@@ -308,7 +367,7 @@ class BackgroundWorker:
                             options = GenerationOptions(**job_data['options'])
                         except Exception:
                             pass
-                    self.job_status[job_id] = JobStatus(
+                    self.set_job_status(job_id, JobStatus(
                         job_id=job_data['job_id'],
                         repo_url=job_data['repo_url'],
                         title=job_data.get('title', GitHubRepoProcessor.generate_title(job_data['repo_url']) if job_data.get('repo_url') else ""),
@@ -324,8 +383,9 @@ class BackgroundWorker:
                         priority=job_data.get('priority', 0),
                         options=options,
                         log_path=job_data.get('log_path')
-                    )
-            print(f"Loaded {len([j for j in self.job_status.values() if j.status == 'completed'])} completed jobs from disk")
+                    ))
+            completed_count = len([j for j in self.get_all_jobs().values() if j.status == 'completed'])
+            print(f"Loaded {completed_count} completed jobs from disk")
         except Exception as e:
             print(f"Error loading job statuses: {e}")
     
@@ -345,8 +405,8 @@ class BackgroundWorker:
                         job_id = repo_info['full_name'].replace('/', '--')
                     
                     # Only add if job doesn't already exist
-                    if job_id not in self.job_status:
-                        self.job_status[job_id] = JobStatus(
+                    if not self.get_job_status(job_id):
+                        self.set_job_status(job_id, JobStatus(
                             job_id=job_id,
                             repo_url=cache_entry.repo_url,
                             title=cache_entry.title or GitHubRepoProcessor.generate_title(cache_entry.repo_url),
@@ -356,7 +416,7 @@ class BackgroundWorker:
                             docs_path=cache_entry.docs_path,
                             progress="Reconstructed from cache",
                             priority=0
-                        )
+                        ))
                         reconstructed_count += 1
                 except Exception as e:
                     print(f"Failed to reconstruct job for {cache_entry.repo_url}: {e}")
@@ -371,54 +431,61 @@ class BackgroundWorker:
     def save_job_statuses(self):
         """Save job statuses to disk."""
         try:
-            # Ensure cache directory exists
-            self.jobs_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            data = {}
-            for job_id, job in self.job_status.items():
-                job_dict = {
-                    'job_id': job.job_id,
-                    'repo_url': job.repo_url,
-                    'title': job.title,
-                    'status': job.status,
-                    'created_at': job.created_at.isoformat(),
-                    'started_at': job.started_at.isoformat() if job.started_at else None,
-                    'completed_at': job.completed_at.isoformat() if job.completed_at else None,
-                    'error_message': job.error_message,
-                    'progress': job.progress,
-                    'docs_path': job.docs_path,
-                    'main_model': job.main_model,
-                    'commit_id': job.commit_id,
-                    'priority': job.priority,
-                    'log_path': job.log_path
-                }
-                if job.options:
-                    job_dict['options'] = job.options.model_dump() if hasattr(job.options, 'model_dump') else {}
-                data[job_id] = job_dict
-            
-            file_manager.save_json(data, self.jobs_file)
+            with self._jobs_file_lock:
+                # Ensure cache directory exists
+                self.jobs_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                jobs_snapshot = self.get_all_jobs()
+                data = {}
+                for job_id, job in jobs_snapshot.items():
+                    job_dict = {
+                        'job_id': job.job_id,
+                        'repo_url': job.repo_url,
+                        'title': job.title,
+                        'status': job.status,
+                        'created_at': job.created_at.isoformat(),
+                        'started_at': job.started_at.isoformat() if job.started_at else None,
+                        'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+                        'error_message': job.error_message,
+                        'progress': job.progress,
+                        'docs_path': job.docs_path,
+                        'main_model': job.main_model,
+                        'commit_id': job.commit_id,
+                        'priority': job.priority,
+                        'log_path': job.log_path
+                    }
+                    if job.options:
+                        job_dict['options'] = job.options.model_dump() if hasattr(job.options, 'model_dump') else {}
+                    data[job_id] = job_dict
+                
+                file_manager.save_json(data, self.jobs_file)
         except Exception as e:
             print(f"Error saving job statuses: {e}")
     
-    def _worker_loop(self):
+    def _worker_loop(self, worker_number: int):
         """Main worker loop."""
         while self.running:
             try:
-                if not self.processing_queue.empty():
-                    job_id = self.processing_queue.get(timeout=1)
-                    self._process_job(job_id)
-                else:
-                    time.sleep(1)
+                job_id = self.processing_queue.get(timeout=1)
+            except Empty:
+                continue
             except Exception as e:
-                print(f"Worker error: {e}")
+                print(f"Worker-{worker_number} queue error: {e}")
                 time.sleep(1)
+                continue
+
+            try:
+                self._process_job(job_id)
+            except Exception as e:
+                print(f"Worker-{worker_number} process error: {e}")
+            finally:
+                self.processing_queue.task_done()
     
     def _process_job(self, job_id: str):
         """Process a single documentation generation job."""
-        if job_id not in self.job_status:
+        job = self.get_job_status(job_id)
+        if not job:
             return
-        
-        job = self.job_status[job_id]
         if job.status == "stopped":
             self._clear_stop_request(job_id)
             return
@@ -517,6 +584,14 @@ class BackgroundWorker:
             # Override docs_dir with job-specific directory
             default_docs_dir = os.path.join("output", "docs", f"{job_id}-docs")
             config.docs_dir = default_docs_dir
+
+            effective_doc_type = ""
+            if job.options and job.options.doc_type:
+                effective_doc_type = job.options.doc_type.strip()
+            if custom_args and getattr(custom_args, "doc_type", None):
+                effective_doc_type = str(custom_args.doc_type).strip()
+            if effective_doc_type:
+                self._apply_doc_type_profile_to_config(config, effective_doc_type, job)
             
             # Apply generation options if provided
             if job.options:

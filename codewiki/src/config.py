@@ -125,14 +125,14 @@ class Config:
         additions = []
         
         if self.doc_type:
-            doc_type_instructions = {
-                'api': "Focus on API documentation: endpoints, parameters, return types, and usage examples.",
-                'architecture': "Focus on architecture documentation: system design, component relationships, and data flow.",
-                'user-guide': "Focus on user guide documentation: how to use features, step-by-step tutorials.",
-                'developer': "Focus on developer documentation: code structure, contribution guidelines, and implementation details.",
-            }
-            if self.doc_type.lower() in doc_type_instructions:
-                additions.append(doc_type_instructions[self.doc_type.lower()])
+            try:
+                from codewiki.src.be.doc_type_profiles import get_doc_type_profile
+                profile = get_doc_type_profile(self.doc_type)
+            except Exception:
+                profile = None
+
+            if profile and profile.get("prompt"):
+                additions.append(str(profile["prompt"]))
             else:
                 additions.append(f"Focus on generating {self.doc_type} documentation.")
         
@@ -152,6 +152,71 @@ class Config:
             pass
         
         return "\n".join(additions) if additions else ""
+
+    def apply_doc_type_profile_defaults(
+        self,
+        doc_type: Optional[str] = None,
+        override_existing: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Apply doc-type profile defaults onto runtime config.
+
+        This is intended for runtime pipelines where doc-type should select
+        a parameter template. Explicit user options can still override these
+        defaults by being applied later.
+        """
+        selected_doc_type = (doc_type or self.doc_type or "").strip()
+        if not selected_doc_type:
+            return None
+
+        try:
+            from codewiki.src.be.doc_type_profiles import get_doc_type_profile
+            profile = get_doc_type_profile(selected_doc_type)
+        except Exception:
+            profile = None
+        if not profile:
+            return None
+
+        self.agent_instructions = self.agent_instructions or {}
+        instructions = self.agent_instructions
+        instructions["doc_type"] = selected_doc_type
+
+        def _set_instruction(key: str, value: Any):
+            if value in (None, ""):
+                return
+            if override_existing or not instructions.get(key):
+                instructions[key] = value
+
+        for key in ("include_patterns", "exclude_patterns", "focus_modules", "skills"):
+            values = profile.get(key)
+            if values:
+                _set_instruction(key, list(values))
+
+        prompt = profile.get("prompt")
+        if prompt:
+            _set_instruction("custom_instructions", str(prompt))
+
+        for key in (
+            "max_tokens",
+            "max_token_per_module",
+            "max_token_per_leaf_module",
+            "max_depth",
+            "concurrency",
+        ):
+            value = profile.get(key)
+            if isinstance(value, int) and value > 0:
+                default_value = {
+                    "max_tokens": DEFAULT_MAX_TOKENS,
+                    "max_token_per_module": DEFAULT_MAX_TOKEN_PER_MODULE,
+                    "max_token_per_leaf_module": DEFAULT_MAX_TOKEN_PER_LEAF_MODULE,
+                    "max_depth": MAX_DEPTH,
+                    "concurrency": 4,
+                }.get(key)
+                current = getattr(self, key, None)
+                if override_existing or current == default_value:
+                    setattr(self, key, value)
+
+        return profile
     
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> 'Config':
@@ -159,7 +224,7 @@ class Config:
         repo_name = os.path.basename(os.path.normpath(args.repo_path))
         sanitized_repo_name = ''.join(c if c.isalnum() else '_' for c in repo_name)
         
-        return cls(
+        config = cls(
             repo_path=args.repo_path,
             output_dir=OUTPUT_BASE_DIR,
             dependency_graph_dir=os.path.join(OUTPUT_BASE_DIR, DEPENDENCY_GRAPHS_DIR),
@@ -172,6 +237,8 @@ class Config:
             fallback_model=FALLBACK_MODEL_1,
             concurrency=4
         )
+        config.apply_doc_type_profile_defaults(override_existing=False)
+        return config
     
     @classmethod
     def from_cli(
@@ -215,7 +282,7 @@ class Config:
         repo_name = os.path.basename(os.path.normpath(repo_path))
         base_output_dir = os.path.join(output_dir, "temp")
         
-        return cls(
+        config = cls(
             repo_path=repo_path,
             output_dir=base_output_dir,
             dependency_graph_dir=os.path.join(base_output_dir, DEPENDENCY_GRAPHS_DIR),
@@ -234,3 +301,5 @@ class Config:
             agent_instructions=agent_instructions,
             concurrency=concurrency
         )
+        config.apply_doc_type_profile_defaults(override_existing=False)
+        return config

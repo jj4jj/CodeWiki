@@ -1002,6 +1002,12 @@ ADMIN_TEMPLATE = """
             font-size: 0.88rem;
         }
 
+        .alert.alert-success {
+            border: 1px solid color-mix(in srgb, var(--success) 45%, var(--line));
+            background: color-mix(in srgb, var(--success) 10%, var(--panel));
+            color: var(--success);
+        }
+
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 210px 130px;
@@ -1262,6 +1268,9 @@ ADMIN_TEMPLATE = """
         <section class="hero">
             <h1>任务控制台</h1>
             <p>创建文档任务，查看队列状态，并管理已完成或失败任务。</p>
+            <p style="margin-top:8px;color:var(--muted);font-size:13px;">
+                任务并行执行: {{ task_concurrency }} / {{ task_concurrency_max }}（可通过启动参数 `--task-concurrency` 配置）
+            </p>
         </section>
 
         <section class="stats">
@@ -1288,6 +1297,9 @@ ADMIN_TEMPLATE = """
 
             {% if error %}
             <div class="alert">{{ error }}</div>
+            {% endif %}
+            {% if message %}
+            <div class="alert {% if message_type == 'success' %}alert-success{% endif %}">{{ message }}</div>
             {% endif %}
 
             <form method="POST" action="/admin">
@@ -1379,7 +1391,17 @@ ADMIN_TEMPLATE = """
 
                         <div class="field">
                             <label for="doc_type">文档类型</label>
-                            <input type="text" id="doc_type" name="doc_type" placeholder="api, architecture, user-guide">
+                            <select id="doc_type" name="doc_type">
+                                <option value="">默认（不指定）</option>
+                                {% for item in doc_type_options %}
+                                <option value="{{ item.name }}">
+                                    {{ item.name }}{% if item.display_name %} - {{ item.display_name }}{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small style="display:block; margin-top:6px; color:var(--muted);">
+                                文档类型可通过 API `/api/doc-types` 在后台管理（新增/覆盖模板指令与参数）。
+                            </small>
                         </div>
 
                         <div class="field">
@@ -1409,6 +1431,101 @@ ADMIN_TEMPLATE = """
                     <button type="submit" class="btn btn-primary">提交任务</button>
                 </div>
             </form>
+        </section>
+
+        <section class="panel">
+            <h2>文档类型模板管理</h2>
+            <p style="color:var(--muted);font-size:0.86rem;margin-bottom:10px;">
+                用于定义 `doc_type` 对应的默认提示词与参数模板。任务里选择该类型后会自动套用。
+            </p>
+
+            <form method="POST" action="/admin/doc-types">
+                <div class="options-grid">
+                    <div class="field">
+                        <label for="profile_doc_type">文档类型 Key</label>
+                        <input id="profile_doc_type" name="doc_type" type="text" required placeholder="例如: architecture">
+                    </div>
+                    <div class="field">
+                        <label for="profile_display_name">显示名</label>
+                        <input id="profile_display_name" name="display_name" type="text" placeholder="例如: Architecture Documentation">
+                    </div>
+                    <div class="field">
+                        <label for="profile_description">说明</label>
+                        <input id="profile_description" name="description" type="text" placeholder="可选">
+                    </div>
+                    <div class="field">
+                        <label for="profile_prompt">模板指令（Prompt）</label>
+                        <textarea id="profile_prompt" name="prompt" rows="4" placeholder="Focus on architecture documentation: ..."></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="profile_include">include_patterns</label>
+                        <input id="profile_include" name="include" type="text" placeholder="*.go,*.proto">
+                    </div>
+                    <div class="field">
+                        <label for="profile_exclude">exclude_patterns</label>
+                        <input id="profile_exclude" name="exclude" type="text" placeholder="*test*,vendor/*">
+                    </div>
+                    <div class="field">
+                        <label for="profile_focus">focus_modules</label>
+                        <input id="profile_focus" name="focus" type="text" placeholder="services/auth,libs/common">
+                    </div>
+                    <div class="field">
+                        <label for="profile_skills">skills</label>
+                        <input id="profile_skills" name="skills" type="text" placeholder="mermaid-validator">
+                    </div>
+                    <div class="field">
+                        <label for="profile_max_tokens">max_tokens</label>
+                        <input id="profile_max_tokens" name="max_tokens" type="number" min="1" placeholder="可选">
+                    </div>
+                    <div class="field">
+                        <label for="profile_max_token_per_module">max_token_per_module</label>
+                        <input id="profile_max_token_per_module" name="max_token_per_module" type="number" min="1" placeholder="可选">
+                    </div>
+                    <div class="field">
+                        <label for="profile_max_token_per_leaf_module">max_token_per_leaf_module</label>
+                        <input id="profile_max_token_per_leaf_module" name="max_token_per_leaf_module" type="number" min="1" placeholder="可选">
+                    </div>
+                    <div class="field">
+                        <label for="profile_max_depth">max_depth</label>
+                        <input id="profile_max_depth" name="max_depth" type="number" min="1" max="10" placeholder="可选">
+                    </div>
+                    <div class="field">
+                        <label for="profile_concurrency">concurrency</label>
+                        <input id="profile_concurrency" name="profile_concurrency" type="number" min="1" max="64" placeholder="可选">
+                    </div>
+                </div>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-primary">保存/更新模板</button>
+                </div>
+            </form>
+
+            <form method="POST" action="/admin/doc-types/delete" style="margin-top:10px;">
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="delete_doc_type">删除自定义模板（仅删除 override）</label>
+                        <input id="delete_doc_type" name="doc_type" type="text" required placeholder="输入 doc_type key">
+                    </div>
+                </div>
+                <div class="actions-row">
+                    <button type="submit" class="btn btn-danger">删除模板</button>
+                </div>
+            </form>
+
+            <details class="options-details" style="margin-top:10px;">
+                <summary>当前模板列表 ({{ doc_type_options|length }})</summary>
+                <div style="margin-top:10px;display:grid;gap:8px;">
+                    {% for item in doc_type_options %}
+                    <div style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-soft);">
+                        <strong>{{ item.name }}</strong>
+                        {% if item.display_name %} · {{ item.display_name }}{% endif %}
+                        {% if item.built_in %}<span style="color:var(--muted);font-size:12px;">(built-in)</span>{% endif %}
+                        {% if item.description %}
+                        <div style="margin-top:4px;color:var(--muted);font-size:12px;">{{ item.description }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
         </section>
 
         <section class="panel">
