@@ -138,6 +138,32 @@ class DocumentationGenerator:
 
         return processed_module_tree
 
+    def _write_failed_module_placeholder(
+        self,
+        docs_path: str,
+        module_name: str,
+        module_key: str,
+        error: Exception,
+    ) -> None:
+        """Write a placeholder markdown file when module generation fails after retries."""
+        try:
+            err_text = str(error).strip() or error.__class__.__name__
+            placeholder = (
+                f"# {module_name}\n\n"
+                f"> Module documentation generation failed after retries.\n\n"
+                f"- Module: `{module_key}`\n"
+                f"- Error: `{err_text}`\n\n"
+                "Please regenerate this task or check backend logs for details.\n"
+            )
+            file_manager.save_text(placeholder, docs_path)
+        except Exception as write_exc:
+            logger.warning(
+                "Failed to write placeholder doc for module %s at %s: %s",
+                module_key,
+                docs_path,
+                write_exc,
+            )
+
     async def generate_module_documentation(
         self,
         components: Dict[str, Any],
@@ -175,32 +201,63 @@ class DocumentationGenerator:
             module_key = "/".join(module_path)
 
             docs_path = os.path.join(working_dir, f"{module_name}.md")
-            overview_path = os.path.join(working_dir, OVERVIEW_FILENAME)
-            if os.path.exists(docs_path) or os.path.exists(overview_path):
+            if os.path.exists(docs_path):
                 await _inc_and_progress("↩", "skip", module_name)
                 return
 
             label = "leaf" if self.is_leaf_module(module_info) else "parent"
             await _inc_and_progress("▶", label, module_name)
+            max_attempts = 2
+            last_exc = None
+            success = False
             t0 = time.time()
 
-            try:
-                async with sem:
-                    if self.is_leaf_module(module_info):
-                        logger.info(f"📄 Processing leaf module: {module_key}")
-                        await self.agent_orchestrator.process_module(
-                            module_name, components, module_info["components"], module_path, working_dir
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    async with sem:
+                        if self.is_leaf_module(module_info):
+                            logger.info(f"📄 Processing leaf module: {module_key} (attempt {attempt}/{max_attempts})")
+                            await self.agent_orchestrator.process_module(
+                                module_name, components, module_info["components"], module_path, working_dir
+                            )
+                        else:
+                            logger.info(f"📁 Processing parent module: {module_key} (attempt {attempt}/{max_attempts})")
+                            await self.generate_parent_module_docs(module_path, working_dir)
+                    success = True
+                    break
+                except Exception as e:
+                    last_exc = e
+                    if attempt < max_attempts:
+                        logger.warning(
+                            "Failed to process module %s on attempt %s/%s, retrying: %s",
+                            module_key,
+                            attempt,
+                            max_attempts,
+                            e,
                         )
+                        await asyncio.sleep(0.6 * attempt)
                     else:
-                        logger.info(f"📁 Processing parent module: {module_key}")
-                        await self.generate_parent_module_docs(module_path, working_dir)
+                        logger.error(f"Failed to process module {module_key}: {str(e)}")
+                        logger.error(traceback.format_exc())
 
+            if success:
                 elapsed = time.time() - t0
                 await _inc_and_progress("✓", label, module_name, elapsed)
-            except Exception as e:
-                logger.error(f"Failed to process module {module_key}: {str(e)}")
-                logger.error(traceback.format_exc())
-                await _inc_and_progress("✗", "error", f"{module_name}: {str(e)[:60]}")
+                return
+
+            if not os.path.exists(docs_path) and last_exc is not None:
+                self._write_failed_module_placeholder(
+                    docs_path=docs_path,
+                    module_name=module_name,
+                    module_key=module_key,
+                    error=last_exc,
+                )
+
+            await _inc_and_progress(
+                "✗",
+                "error",
+                f"{module_name}: {str(last_exc)[:60] if last_exc else 'unknown'}",
+            )
 
         # Separate modules into independent leaf batches vs parent steps
         # Leaf modules at the same depth share no dependencies → safe to parallelize

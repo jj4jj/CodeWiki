@@ -311,7 +311,13 @@ class WebRoutes:
         if not file_path.is_relative_to(resolved_docs_path):
             raise HTTPException(status_code=403, detail="Access denied")
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"File {filename} not found")
+            fallback_file = self._resolve_existing_doc_file(docs_path, filename)
+            if fallback_file is None:
+                raise HTTPException(status_code=404, detail=f"File {filename} not found")
+            file_path = fallback_file.resolve()
+            if not file_path.is_relative_to(resolved_docs_path):
+                raise HTTPException(status_code=403, detail="Access denied")
+            filename = fallback_file.relative_to(docs_path).as_posix()
         
         try:
             content = file_manager.load_text(file_path)
@@ -622,6 +628,82 @@ class WebRoutes:
                 title = stem.replace("_", " ").replace("-", " ").title()
             nav_items.append({"path": rel_path, "title": title})
         return nav_items
+
+    def _normalize_doc_filename(self, filename: str) -> str:
+        """Normalize markdown filename for fuzzy matching."""
+        stem = Path(filename).stem
+        stem = stem.replace("\\", "/").split("/")[-1]
+        stem = re.sub(r"[_\-]+", " ", stem)
+        stem = re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff ]+", " ", stem)
+        stem = re.sub(r"\s+", " ", stem).strip().lower()
+        return stem
+
+    def _resolve_existing_doc_file(self, docs_path: Path, filename: str):
+        """
+        Resolve requested markdown file by trying naming variants and fuzzy match.
+
+        Helps when links use title-like names (e.g. `API Layer.md`) while files are
+        stored as snake_case (e.g. `api_layer.md`).
+        """
+        requested_name = Path(filename).name
+        if not requested_name.lower().endswith(".md"):
+            return None
+
+        direct = docs_path / requested_name
+        if direct.exists() and direct.is_file():
+            return direct
+
+        stem = Path(requested_name).stem
+        variants = [
+            requested_name,
+            f"{stem.replace(' ', '_')}.md",
+            f"{stem.replace(' ', '-')}.md",
+            f"{stem.replace('_', ' ')}.md",
+            f"{stem.replace('-', ' ')}.md",
+            f"{stem.lower()}.md",
+            f"{stem.lower().replace(' ', '_')}.md",
+            f"{stem.lower().replace(' ', '-')}.md",
+        ]
+        for variant in variants:
+            candidate = docs_path / variant
+            if candidate.exists() and candidate.is_file():
+                return candidate
+
+        target_norm = self._normalize_doc_filename(requested_name)
+        if not target_norm:
+            return None
+
+        target_tokens = [token for token in target_norm.split(" ") if token]
+        best = None
+        best_score = -1
+
+        for candidate in docs_path.glob("*.md"):
+            cand_norm = self._normalize_doc_filename(candidate.name)
+            if not cand_norm:
+                continue
+
+            if cand_norm == target_norm:
+                score = 1000
+            else:
+                cand_tokens = [token for token in cand_norm.split(" ") if token]
+                if not cand_tokens:
+                    continue
+                overlap = len(set(target_tokens) & set(cand_tokens))
+                if overlap == 0:
+                    continue
+                score = overlap * 100 - abs(len(cand_tokens) - len(target_tokens)) * 10
+                if cand_norm.endswith(target_norm) or cand_norm.startswith(target_norm):
+                    score += 15
+                if target_norm.endswith(cand_norm) or target_norm.startswith(cand_norm):
+                    score += 8
+
+            if score > best_score:
+                best = candidate
+                best_score = score
+
+        if best is not None and best_score >= 80:
+            return best
+        return None
 
     def _collect_doc_type_views(self, current_job: JobStatus, current_job_id: str):
         """Collect available doc-type views for same repo/subproject."""

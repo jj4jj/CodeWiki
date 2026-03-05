@@ -2,8 +2,13 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 import logging
-import tiktoken
 import traceback
+import math
+
+try:
+    import tiktoken
+except Exception:  # pragma: no cover - optional runtime dependency
+    tiktoken = None
 
 
 logger = logging.getLogger(__name__)
@@ -27,15 +32,92 @@ def is_complex_module(components: dict[str, any], core_component_ids: list[str])
 # ---------------------- Token Counting ---------------------
 # ------------------------------------------------------------
 
-enc = tiktoken.encoding_for_model("gpt-4")
+_token_encoder = None
+_token_encoder_init_attempted = False
+_tokenizer_error_reason = ""
+_fallback_warning_logged = False
+
+
+def _get_token_encoder():
+    """Lazily initialize tiktoken encoder to avoid startup-time network dependency."""
+    global _token_encoder
+    global _token_encoder_init_attempted
+    global _tokenizer_error_reason
+
+    if _token_encoder is not None:
+        return _token_encoder
+    if _token_encoder_init_attempted:
+        return None
+
+    _token_encoder_init_attempted = True
+
+    if tiktoken is None:
+        _tokenizer_error_reason = "tiktoken is not installed"
+        return None
+
+    candidates = (
+        ("model", "gpt-4"),
+        ("model", "gpt-4o"),
+        ("encoding", "cl100k_base"),
+    )
+
+    last_error = ""
+    for kind, name in candidates:
+        try:
+            if kind == "model":
+                _token_encoder = tiktoken.encoding_for_model(name)
+            else:
+                _token_encoder = tiktoken.get_encoding(name)
+            return _token_encoder
+        except Exception as exc:
+            last_error = str(exc)
+
+    _tokenizer_error_reason = last_error or "unknown tokenizer initialization error"
+    return None
+
+
+def _estimate_tokens_fallback(text: str) -> int:
+    """
+    Estimate token count without tiktoken.
+
+    Uses a conservative heuristic so module splitting remains on the safe side.
+    """
+    if not text:
+        return 0
+
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
+    ascii_count = max(0, len(text) - cjk_count)
+    estimate = math.ceil(cjk_count * 1.1 + ascii_count / 3.2)
+    return max(1, estimate)
 
 def count_tokens(text: str) -> int:
     """
     Count the number of tokens in a text.
     """
-    length = len(enc.encode(text))
-    # logger.debug(f"Number of tokens: {length}")
-    return length
+    global _fallback_warning_logged
+
+    encoder = _get_token_encoder()
+    if encoder is not None:
+        try:
+            return len(encoder.encode(text))
+        except Exception as exc:
+            if not _fallback_warning_logged:
+                logger.warning(
+                    "Token encoding failed, falling back to heuristic estimation: %s",
+                    exc,
+                )
+                _fallback_warning_logged = True
+            return _estimate_tokens_fallback(text)
+
+    if not _fallback_warning_logged:
+        reason = _tokenizer_error_reason or "encoder unavailable"
+        logger.warning(
+            "tiktoken encoder unavailable (%s), using heuristic token estimation.",
+            reason,
+        )
+        _fallback_warning_logged = True
+
+    return _estimate_tokens_fallback(text)
 
 
 # ------------------------------------------------------------

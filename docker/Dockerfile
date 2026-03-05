@@ -28,6 +28,26 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Persist and prewarm tiktoken cache for environments with unstable outbound SSL/network.
+ENV TIKTOKEN_CACHE_DIR=/app/output/tiktoken_cache
+RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && \
+    python - <<'PY' || true
+import tiktoken
+print("Prewarming tiktoken encodings into cache...")
+for model in ("gpt-4", "gpt-4o"):
+    try:
+        tiktoken.encoding_for_model(model)
+        print(f"  model ok: {model}")
+    except Exception as exc:
+        print(f"  model skip: {model} ({exc})")
+for encoding_name in ("cl100k_base",):
+    try:
+        tiktoken.get_encoding(encoding_name)
+        print(f"  encoding ok: {encoding_name}")
+    except Exception as exc:
+        print(f"  encoding skip: {encoding_name} ({exc})")
+PY
+
 # Copy application code
 COPY codewiki ./codewiki
 COPY img ./img
@@ -35,7 +55,7 @@ COPY pyproject.toml .
 COPY README.md .
 
 # Create output directories
-RUN mkdir -p output/cache output/temp output/docs output/dependency_graphs
+RUN mkdir -p output/cache output/temp output/docs output/dependency_graphs "$TIKTOKEN_CACHE_DIR"
 
 # Set environment variables
 ENV PYTHONPATH=/app

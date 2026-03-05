@@ -10,6 +10,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - TIKTOKEN_CACHE_DIR=/app/output/tiktoken_cache
     env_file:
       - ./.env
     # networks:
