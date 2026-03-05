@@ -133,7 +133,10 @@ class DocumentationGenerator:
             if os.path.exists(os.path.join(working_dir, f"{child_name}.md")):
                 child_info["docs"] = file_manager.load_text(os.path.join(working_dir, f"{child_name}.md"))
             else:
-                logger.warning(f"Module docs not found at {os.path.join(working_dir, f"{child_name}.md")}")
+                logger.warning(
+                    "Module docs not found at %s",
+                    os.path.join(working_dir, f"{child_name}.md"),
+                )
                 child_info["docs"] = ""
 
         return processed_module_tree
@@ -191,7 +194,9 @@ class DocumentationGenerator:
                 done_count[0] += 1
                 idx = done_count[0]
             t = f" ({elapsed:.1f}s)" if elapsed is not None else ""
-            print(f"  [{idx}/{total_modules}] {symbol} [{label}] {name}{t}", flush=True)
+            progress_line = f"[{idx}/{total_modules}] {symbol} [{label}] {name}{t}"
+            logger.info(progress_line)
+            print(f"  {progress_line}", flush=True)
 
         # Build semaphore for concurrency control
         sem = asyncio.Semaphore(concurrency)
@@ -297,10 +302,17 @@ class DocumentationGenerator:
 
             # Final repo overview
             done_count[0] += 1
-            print(f"  [{done_count[0]}/{total_modules}] ▶ [overview] repository overview", flush=True)
+            overview_start = f"[{done_count[0]}/{total_modules}] ▶ [overview] repository overview"
+            logger.info(overview_start)
+            print(f"  {overview_start}", flush=True)
             t0 = time.time()
             final_module_tree = await self.generate_parent_module_docs([], working_dir)
-            print(f"  [{done_count[0]}/{total_modules}] ✓ [overview] repository overview ({time.time()-t0:.1f}s)", flush=True)
+            overview_done = (
+                f"[{done_count[0]}/{total_modules}] ✓ [overview] repository overview "
+                f"({time.time()-t0:.1f}s)"
+            )
+            logger.info(overview_done)
+            print(f"  {overview_done}", flush=True)
 
         else:
             logger.info("Processing whole repo because repo can fit in the context window")

@@ -13,6 +13,7 @@ import traceback
 import shlex
 import argparse
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from queue import Queue, Empty
@@ -64,6 +65,18 @@ class _JobLogHandler(logging.Handler):
             self.worker._append_job_log(self.job, message)
         except Exception:
             pass
+
+
+class _DocumentationProgressFilter(logging.Filter):
+    """Only keep compact module progress logs from documentation_generator."""
+
+    PROGRESS_RE = re.compile(r"^\[\d+/\d+\]\s")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "codewiki.src.be.documentation_generator":
+            return False
+        message = record.getMessage()
+        return bool(self.PROGRESS_RE.match(message))
 
 
 class JobStoppedError(Exception):
@@ -159,7 +172,12 @@ class BackgroundWorker:
             raise ValueError(f"Subproject path must be a directory: '{subproject_path}'")
         return candidate
 
-    def _attach_backend_job_logger(self, job: JobStatus, level: int = logging.INFO):
+    def _attach_backend_job_logger(
+        self,
+        job: JobStatus,
+        level: int = logging.INFO,
+        progress_only: bool = False,
+    ):
         """
         Attach a temporary INFO handler for backend logger to the job log.
 
@@ -171,9 +189,13 @@ class BackgroundWorker:
 
         handler = _JobLogHandler(self, job)
         handler.setLevel(level)
-        handler.setFormatter(
-            logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
-        )
+        if progress_only:
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            handler.addFilter(_DocumentationProgressFilter())
+        else:
+            handler.setFormatter(
+                logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
+            )
 
         backend_logger.addHandler(handler)
         backend_logger.setLevel(level)
@@ -288,6 +310,50 @@ class BackgroundWorker:
             job,
             f"Applied doc type profile: {profile.get('name', selected)}",
         )
+
+    def _resolve_cached_docs_path(self, job: JobStatus, cache_scope: str) -> str:
+        """Resolve cached docs path for a job/scope without mutating job status."""
+        cached_docs = self.cache_manager.get_cached_docs(job.repo_url, cache_scope=cache_scope)
+        if cached_docs and Path(cached_docs).exists():
+            return cached_docs
+        return ""
+
+    def _read_docs_commit_id(self, docs_path: str) -> str:
+        """Read commit_id from generated docs metadata, if available."""
+        if not docs_path:
+            return ""
+        metadata_path = Path(docs_path) / "metadata.json"
+        if not metadata_path.exists():
+            return ""
+        try:
+            metadata = file_manager.load_json(metadata_path)
+        except Exception:
+            return ""
+        generation_info = metadata.get("generation_info") if isinstance(metadata, dict) else None
+        commit_id = generation_info.get("commit_id") if isinstance(generation_info, dict) else None
+        return str(commit_id or "").strip()
+
+    def _detect_repo_commit(self, repo_dir: str) -> str:
+        """Detect the checked-out git commit SHA from cloned repository."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return (result.stdout or "").strip()
+        except Exception:
+            pass
+        return ""
+
+    def _build_versioned_docs_output(self, job_id: str) -> str:
+        """Build versioned docs output path: output/docs/<job_id>/<yymmdd-hhmmss>."""
+        version = datetime.now().strftime("%y%m%d-%H%M%S")
+        return str(Path(WebAppConfig.OUTPUT_DIR) / "docs" / job_id / version)
 
     def configure_worker_concurrency(self, value: int):
         """Configure worker pool size before start()."""
@@ -495,6 +561,9 @@ class BackgroundWorker:
         custom_unknown_args: List[str] = []
         backend_logger_ctx = None
         verbose_requested = False
+        detected_commit_id = ""
+        cached_docs = ""
+        cached_commit_id = ""
         
         try:
             # Initialize/clear per-job log file for this run
@@ -535,25 +604,30 @@ class BackgroundWorker:
                 (custom_args and getattr(custom_args, "no_cache", False))
             )
             cache_scope = job.job_id
-            cached_docs = (
-                self.cache_manager.get_cached_docs(job.repo_url, cache_scope=cache_scope)
-                if use_cache
-                else None
-            )
-            if cached_docs and Path(cached_docs).exists():
-                job.status = 'completed'
-                job.completed_at = datetime.now()
-                job.docs_path = cached_docs
-                self._set_progress(job, "Documentation retrieved from cache")
-                if not job.main_model:  # Only set if not already set
-                    job.main_model = MAIN_MODEL
-                
-                # Save job status to disk
-                self.save_job_statuses()
-                
-                print(f"Job {job_id}: Using cached documentation")
-                self._append_job_log(job, f"Cache hit: {cached_docs}")
-                return
+            cached_docs = self._resolve_cached_docs_path(job, cache_scope)
+            cached_commit_id = self._read_docs_commit_id(cached_docs) if cached_docs else ""
+            if use_cache:
+                requested_commit = (job.commit_id or "").strip()
+                # Explicit commit can be trusted for cache lookup without cloning.
+                if (
+                    requested_commit
+                    and cached_docs
+                    and cached_commit_id
+                    and cached_commit_id == requested_commit
+                ):
+                    job.status = 'completed'
+                    job.completed_at = datetime.now()
+                    job.docs_path = cached_docs
+                    self._set_progress(job, "Documentation retrieved from cache")
+                    if not job.main_model:  # Only set if not already set
+                        job.main_model = MAIN_MODEL
+                    self.save_job_statuses()
+                    print(f"Job {job_id}: Using cached documentation")
+                    self._append_job_log(
+                        job,
+                        f"Cache hit by explicit commit ({requested_commit[:10]}): {cached_docs}",
+                    )
+                    return
             
             # Clone repository
             repo_info = GitHubRepoProcessor.get_repo_info(job.repo_url)
@@ -565,9 +639,36 @@ class BackgroundWorker:
             if not GitHubRepoProcessor.clone_repository(repo_info['clone_url'], temp_repo_dir, job.commit_id):
                 raise Exception("Failed to clone repository")
             self._check_stop_requested(job)
-            
+
+            detected_commit_id = self._detect_repo_commit(temp_repo_dir)
+            if detected_commit_id:
+                self._append_job_log(job, f"Detected repository commit: {detected_commit_id[:10]}")
+                if not job.commit_id:
+                    job.commit_id = detected_commit_id
+
             # Generate documentation
             self._set_progress(job, "Analyzing repository structure...")
+
+            if use_cache and cached_docs:
+                if not cached_commit_id:
+                    cached_commit_id = self._read_docs_commit_id(cached_docs)
+                if (
+                    detected_commit_id
+                    and cached_commit_id
+                    and detected_commit_id == cached_commit_id
+                ):
+                    job.status = 'completed'
+                    job.completed_at = datetime.now()
+                    job.docs_path = cached_docs
+                    self._set_progress(
+                        job,
+                        f"Documentation retrieved from cache (commit {detected_commit_id[:10]})",
+                    )
+                    if not job.main_model:
+                        job.main_model = MAIN_MODEL
+                    self.save_job_statuses()
+                    self._append_job_log(job, f"Cache hit after commit check: {cached_docs}")
+                    return
             
             # Create config for documentation generation (using env vars)
             project_repo_path = temp_repo_dir
@@ -584,6 +685,7 @@ class BackgroundWorker:
             # Override docs_dir with job-specific directory
             default_docs_dir = os.path.join("output", "docs", f"{job_id}-docs")
             config.docs_dir = default_docs_dir
+            output_explicitly_set = False
 
             effective_doc_type = ""
             if job.options and job.options.doc_type:
@@ -597,6 +699,7 @@ class BackgroundWorker:
             if job.options:
                 if job.options.output:
                     config.docs_dir = job.options.output
+                    output_explicitly_set = True
                 if job.options.max_depth is not None:
                     config.max_depth = job.options.max_depth
                 if job.options.agent_cmd:
@@ -641,17 +744,41 @@ class BackgroundWorker:
 
             # Custom CLI args override regular options where relevant.
             if custom_args:
+                if getattr(custom_args, "output", None):
+                    output_explicitly_set = True
                 self._apply_custom_cli_args_to_config(config, custom_args)
+
+            # Auto-version output for repeated runs when commit changed and output path
+            # is not explicitly controlled by the user.
+            if (
+                not output_explicitly_set
+                and detected_commit_id
+                and cached_docs
+                and (
+                    not cached_commit_id or cached_commit_id != detected_commit_id
+                )
+            ):
+                config.docs_dir = self._build_versioned_docs_output(job_id)
+                self._append_job_log(
+                    job,
+                    "Detected commit change; switched docs output to versioned directory: "
+                    f"{config.docs_dir}",
+                )
             
             self._append_job_log(job, f"Effective docs output: {config.docs_dir}")
             if verbose_requested:
                 backend_logger_ctx = self._attach_backend_job_logger(job, level=logging.DEBUG)
                 self._append_job_log(job, "Streaming backend DEBUG logs to job log")
+            else:
+                backend_logger_ctx = self._attach_backend_job_logger(
+                    job, level=logging.INFO, progress_only=True
+                )
+                self._append_job_log(job, "Streaming module progress logs to job log")
             self._set_progress(job, "Generating documentation...")
             self._check_stop_requested(job)
             
             # Generate documentation
-            doc_generator = DocumentationGenerator(config, job.commit_id)
+            doc_generator = DocumentationGenerator(config, job.commit_id or detected_commit_id or None)
             
             # Run the async documentation generation in a new event loop
             loop = asyncio.new_event_loop()

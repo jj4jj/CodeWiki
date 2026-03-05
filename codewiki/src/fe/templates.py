@@ -2220,19 +2220,19 @@ __CW_SHARED_UI_LAYOUT__
             </p>
             <div class="stats">
                 <article class="stat queued">
-                    <div class="value">{{ queued_count }}</div>
+                    <div class="value" id="statQueued">{{ queued_count }}</div>
                     <div class="label">Queued</div>
                 </article>
                 <article class="stat processing">
-                    <div class="value">{{ processing_count }}</div>
+                    <div class="value" id="statProcessing">{{ processing_count }}</div>
                     <div class="label">Processing</div>
                 </article>
                 <article class="stat completed">
-                    <div class="value">{{ completed_count }}</div>
+                    <div class="value" id="statCompleted">{{ completed_count }}</div>
                     <div class="label">Completed</div>
                 </article>
                 <article class="stat failed">
-                    <div class="value">{{ failed_count }}</div>
+                    <div class="value" id="statFailed">{{ failed_count }}</div>
                     <div class="label">Failed</div>
                 </article>
             </div>
@@ -2645,6 +2645,71 @@ __CW_SHARED_UI_LAYOUT__
             }
         }
 
+        async function pollTaskStatuses() {
+            const body = document.getElementById("tasksBody");
+            if (!body) return;
+
+            try {
+                const response = await fetch("/api/tasks");
+                if (!response.ok) return;
+                const tasks = await response.json();
+                if (!Array.isArray(tasks)) return;
+
+                const byId = new Map(tasks.map((item) => [item.job_id, item]));
+                let queuedCount = 0;
+                let processingCount = 0;
+                let completedCount = 0;
+                let failedCount = 0;
+                let hasActive = false;
+
+                tasks.forEach((task) => {
+                    const st = String(task.status || "").toLowerCase();
+                    if (st === "queued") queuedCount += 1;
+                    else if (st === "processing") processingCount += 1;
+                    else if (st === "completed") completedCount += 1;
+                    else if (st === "failed") failedCount += 1;
+                    if (st === "queued" || st === "processing") hasActive = true;
+                });
+
+                body.querySelectorAll("tr[data-job-id]").forEach((row) => {
+                    const jobId = row.dataset.jobId || "";
+                    const task = byId.get(jobId);
+                    if (!task) return;
+
+                    const statusText = String(task.status || "");
+                    const statusKey = statusText.toLowerCase();
+                    row.setAttribute("data-status", statusKey);
+
+                    const statusEl = row.querySelector(".status");
+                    if (statusEl) {
+                        statusEl.className = `status ${statusKey}`;
+                        statusEl.textContent = statusText;
+                    }
+
+                    const progressEl = row.querySelector(".task-progress");
+                    if (progressEl) {
+                        progressEl.textContent = task.progress || "";
+                    }
+                });
+
+                const statQueued = document.getElementById("statQueued");
+                const statProcessing = document.getElementById("statProcessing");
+                const statCompleted = document.getElementById("statCompleted");
+                const statFailed = document.getElementById("statFailed");
+                if (statQueued) statQueued.textContent = String(queuedCount);
+                if (statProcessing) statProcessing.textContent = String(processingCount);
+                if (statCompleted) statCompleted.textContent = String(completedCount);
+                if (statFailed) statFailed.textContent = String(failedCount);
+
+                if (!hasActive && pollTaskStatuses._timer) {
+                    clearInterval(pollTaskStatuses._timer);
+                    pollTaskStatuses._timer = null;
+                }
+            } catch (error) {
+                // polling failure is non-fatal
+            }
+        }
+
         function closeTaskLog() {
             const modal = document.getElementById("logModal");
             if (modal) modal.classList.remove("show");
@@ -2798,6 +2863,12 @@ __CW_SHARED_UI_LAYOUT__
                 logModal.addEventListener("click", (e) => {
                     if (e.target === logModal) closeTaskLog();
                 });
+            }
+
+            const hasTasksTable = Boolean(document.getElementById("tasksBody"));
+            if (hasTasksTable) {
+                pollTaskStatuses();
+                pollTaskStatuses._timer = setInterval(pollTaskStatuses, 3000);
             }
         });
 
