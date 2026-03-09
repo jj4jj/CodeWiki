@@ -352,14 +352,12 @@ _SHARED_UI_LAYOUT = """
         }
 
         @media (hover: hover) {
-            .panel:hover,
             .doc-card:hover,
             .rank-item:hover,
             .stat-chip:hover,
             .stat:hover,
             .agent-item:hover,
-            .sidebar-info:hover,
-            .table-wrap:hover {
+            .sidebar-info:hover {
                 background: var(--surface-hover);
                 border-color: var(--line-strong);
             }
@@ -1898,32 +1896,103 @@ __CW_SHARED_UI_TOKENS__
             border: 1px solid var(--line);
             overflow-x: auto;
             position: relative;
-            cursor: default;
+            cursor: zoom-in;
         }
 
-        .mermaid svg {
+        .mermaid-lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(14, 23, 35, 0.72);
+            z-index: 2200;
+            padding: 20px;
+        }
+
+        .mermaid-lightbox-overlay.show {
+            display: flex;
+        }
+
+        .mermaid-lightbox-panel {
+            width: min(96vw, 1520px);
+            height: min(92vh, 980px);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.34);
+        }
+
+        .mermaid-lightbox-toolbar {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 10px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface-soft);
+            font-size: 0.8rem;
+        }
+
+        .mermaid-lightbox-toolbar strong {
+            color: var(--text);
+            font-size: 0.82rem;
+        }
+
+        .mermaid-lightbox-hint {
+            color: var(--muted);
+            font-size: 0.76rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mermaid-lightbox-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mermaid-lightbox-btn {
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.76rem;
+            padding: 4px 9px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+
+        .mermaid-lightbox-btn:hover {
+            color: var(--primary);
+            border-color: var(--line-strong);
+            background: var(--primary-soft);
+        }
+
+        .mermaid-lightbox-canvas {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: var(--surface);
+            cursor: grab;
+        }
+
+        .mermaid-lightbox-canvas.dragging {
+            cursor: grabbing;
+        }
+
+        .mermaid-lightbox-content {
+            position: absolute;
+            left: 0;
+            top: 0;
             transform-origin: 0 0;
             will-change: transform;
         }
 
-        .mermaid.zoom-active {
-            cursor: grab;
-        }
-
-        .mermaid.zoom-active.dragging {
-            cursor: grabbing;
-        }
-
-        .mermaid-zoom-hint {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.9);
-            color: var(--muted);
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            pointer-events: none;
+        .mermaid-lightbox-content svg {
+            max-width: none;
         }
 
         @media (max-width: 1580px) {
@@ -2301,8 +2370,176 @@ __CW_SHARED_UI_TOKENS__
             applyTheme(stored);
         }
 
+        function createMermaidLightbox() {
+            const overlay = document.createElement("div");
+            overlay.className = "mermaid-lightbox-overlay";
+            overlay.innerHTML = `
+                <div class="mermaid-lightbox-panel" role="dialog" aria-modal="true" aria-label="Mermaid 独立视图">
+                    <div class="mermaid-lightbox-toolbar">
+                        <strong>Mermaid 独立视图</strong>
+                        <span class="mermaid-lightbox-hint">滚轮缩放 · 拖动平移 · 双击复位</span>
+                        <div class="mermaid-lightbox-actions">
+                            <button type="button" class="mermaid-lightbox-btn" data-action="reset">复位</button>
+                            <button type="button" class="mermaid-lightbox-btn" data-action="close">关闭</button>
+                        </div>
+                    </div>
+                    <div class="mermaid-lightbox-canvas">
+                        <div class="mermaid-lightbox-content"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const panel = overlay.querySelector(".mermaid-lightbox-panel");
+            const canvas = overlay.querySelector(".mermaid-lightbox-canvas");
+            const content = overlay.querySelector(".mermaid-lightbox-content");
+            const closeBtn = overlay.querySelector('[data-action="close"]');
+            const resetBtn = overlay.querySelector('[data-action="reset"]');
+
+            const state = {
+                open: false,
+                dragging: false,
+                scale: 1,
+                x: 0,
+                y: 0,
+                startX: 0,
+                startY: 0,
+            };
+
+            const clampScale = (value) => Math.max(0.2, Math.min(8, value));
+
+            const apply = () => {
+                content.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+            };
+
+            const fitToCanvas = () => {
+                const svg = content.querySelector("svg");
+                if (!svg) return;
+
+                let sourceWidth = 0;
+                let sourceHeight = 0;
+                const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
+                if (vb && vb.width && vb.height) {
+                    sourceWidth = vb.width;
+                    sourceHeight = vb.height;
+                }
+                if (!sourceWidth || !sourceHeight) {
+                    const bbox = typeof svg.getBBox === "function" ? svg.getBBox() : null;
+                    if (bbox && bbox.width && bbox.height) {
+                        sourceWidth = bbox.width;
+                        sourceHeight = bbox.height;
+                    }
+                }
+                if (!sourceWidth || !sourceHeight) {
+                    const rect = svg.getBoundingClientRect();
+                    sourceWidth = rect.width || 1200;
+                    sourceHeight = rect.height || 800;
+                }
+
+                const availW = Math.max(200, canvas.clientWidth - 48);
+                const availH = Math.max(200, canvas.clientHeight - 48);
+                state.scale = clampScale(Math.min(availW / sourceWidth, availH / sourceHeight, 1.2));
+                state.x = Math.round((canvas.clientWidth - sourceWidth * state.scale) / 2);
+                state.y = Math.round((canvas.clientHeight - sourceHeight * state.scale) / 2);
+                apply();
+            };
+
+            const close = () => {
+                state.open = false;
+                state.dragging = false;
+                overlay.classList.remove("show");
+                canvas.classList.remove("dragging");
+                content.innerHTML = "";
+            };
+
+            const open = (sourceSvg) => {
+                if (!sourceSvg) return;
+                const clone = sourceSvg.cloneNode(true);
+                clone.removeAttribute("style");
+                content.innerHTML = "";
+                content.appendChild(clone);
+                overlay.classList.add("show");
+                state.open = true;
+                state.dragging = false;
+                canvas.classList.remove("dragging");
+                window.requestAnimationFrame(fitToCanvas);
+            };
+
+            closeBtn.addEventListener("click", close);
+            resetBtn.addEventListener("click", fitToCanvas);
+            overlay.addEventListener("click", (event) => {
+                if (event.target === overlay) close();
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && state.open) {
+                    close();
+                }
+            });
+
+            canvas.addEventListener("dblclick", (event) => {
+                if (!state.open) return;
+                event.preventDefault();
+                fitToCanvas();
+            });
+
+            canvas.addEventListener("wheel", (event) => {
+                if (!state.open) return;
+                event.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const cx = event.clientX - rect.left;
+                const cy = event.clientY - rect.top;
+                const zoomFactor = event.deltaY < 0 ? 1.12 : 0.9;
+                const nextScale = clampScale(state.scale * zoomFactor);
+                const px = (cx - state.x) / state.scale;
+                const py = (cy - state.y) / state.scale;
+                state.scale = nextScale;
+                state.x = cx - px * state.scale;
+                state.y = cy - py * state.scale;
+                apply();
+            }, { passive: false });
+
+            canvas.addEventListener("mousedown", (event) => {
+                if (!state.open || event.button !== 0) return;
+                event.preventDefault();
+                state.dragging = true;
+                state.startX = event.clientX - state.x;
+                state.startY = event.clientY - state.y;
+                canvas.classList.add("dragging");
+            });
+
+            window.addEventListener("mousemove", (event) => {
+                if (!state.dragging) return;
+                state.x = event.clientX - state.startX;
+                state.y = event.clientY - state.startY;
+                apply();
+            });
+
+            window.addEventListener("mouseup", () => {
+                if (!state.dragging) return;
+                state.dragging = false;
+                canvas.classList.remove("dragging");
+            });
+
+            return { open };
+        }
+
+        function bindMermaidLightbox(container, lightbox) {
+            if (!container || !lightbox || container.dataset.lightboxBound === "1") return;
+            container.dataset.lightboxBound = "1";
+            container.title = "双击打开独立视图";
+            container.addEventListener("dblclick", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const svg = container.querySelector("svg");
+                if (!svg) return;
+                lightbox.open(svg);
+            });
+        }
+
         document.addEventListener("DOMContentLoaded", function() {
             initTheme();
+            const mermaidLightbox = createMermaidLightbox();
             const docsThemeSelect = document.getElementById("docsThemeSelect");
             if (docsThemeSelect) {
                 docsThemeSelect.addEventListener("change", function() {
@@ -2498,7 +2735,11 @@ __CW_SHARED_UI_TOKENS__
             setActiveNav(currentPagePath);
 
             if (!frameMode) {
-                mermaid.init(undefined, document.querySelectorAll(".mermaid"));
+                const nodes = Array.from(document.querySelectorAll(".mermaid"));
+                mermaid.init(undefined, nodes);
+                window.setTimeout(() => {
+                    nodes.forEach((node) => bindMermaidLightbox(node, mermaidLightbox));
+                }, 0);
             }
 
             const chatPanel = document.querySelector(".chat-panel");
@@ -2969,6 +3210,104 @@ __CW_SHARED_UI_TOKENS__
             background: var(--surface);
             border: 1px solid var(--line);
             overflow-x: auto;
+            position: relative;
+            cursor: zoom-in;
+        }
+
+        .mermaid-lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(14, 23, 35, 0.72);
+            z-index: 2200;
+            padding: 20px;
+        }
+
+        .mermaid-lightbox-overlay.show {
+            display: flex;
+        }
+
+        .mermaid-lightbox-panel {
+            width: min(96vw, 1520px);
+            height: min(92vh, 980px);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.34);
+        }
+
+        .mermaid-lightbox-toolbar {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 10px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface-soft);
+            font-size: 0.8rem;
+        }
+
+        .mermaid-lightbox-toolbar strong {
+            color: var(--text);
+            font-size: 0.82rem;
+        }
+
+        .mermaid-lightbox-hint {
+            color: var(--muted);
+            font-size: 0.76rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .mermaid-lightbox-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mermaid-lightbox-btn {
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--muted);
+            font-size: 0.76rem;
+            padding: 4px 9px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+
+        .mermaid-lightbox-btn:hover {
+            color: var(--primary);
+            border-color: var(--line-strong);
+            background: var(--primary-soft);
+        }
+
+        .mermaid-lightbox-canvas {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: var(--surface);
+            cursor: grab;
+        }
+
+        .mermaid-lightbox-canvas.dragging {
+            cursor: grabbing;
+        }
+
+        .mermaid-lightbox-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+
+        .mermaid-lightbox-content svg {
+            max-width: none;
         }
 
         @media (max-width: 980px) {
@@ -3003,19 +3342,33 @@ __CW_SHARED_UI_TOKENS__
             }
         });
 
-        function enableMermaidZoom(container) {
-            if (!container || container.dataset.zoomBound === "1") return;
-            const svg = container.querySelector("svg");
-            if (!svg) return;
-            container.dataset.zoomBound = "1";
+        function createMermaidLightbox() {
+            const overlay = document.createElement("div");
+            overlay.className = "mermaid-lightbox-overlay";
+            overlay.innerHTML = `
+                <div class="mermaid-lightbox-panel" role="dialog" aria-modal="true" aria-label="Mermaid 独立视图">
+                    <div class="mermaid-lightbox-toolbar">
+                        <strong>Mermaid 独立视图</strong>
+                        <span class="mermaid-lightbox-hint">滚轮缩放 · 拖动平移 · 双击复位</span>
+                        <div class="mermaid-lightbox-actions">
+                            <button type="button" class="mermaid-lightbox-btn" data-action="reset">复位</button>
+                            <button type="button" class="mermaid-lightbox-btn" data-action="close">关闭</button>
+                        </div>
+                    </div>
+                    <div class="mermaid-lightbox-canvas">
+                        <div class="mermaid-lightbox-content"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
 
-            const hint = document.createElement("div");
-            hint.className = "mermaid-zoom-hint";
-            hint.textContent = "双击启用缩放/拖动";
-            container.appendChild(hint);
+            const canvas = overlay.querySelector(".mermaid-lightbox-canvas");
+            const content = overlay.querySelector(".mermaid-lightbox-content");
+            const closeBtn = overlay.querySelector('[data-action="close"]');
+            const resetBtn = overlay.querySelector('[data-action="reset"]');
 
             const state = {
-                active: false,
+                open: false,
                 dragging: false,
                 scale: 1,
                 x: 0,
@@ -3024,39 +3377,87 @@ __CW_SHARED_UI_TOKENS__
                 startY: 0,
             };
 
-            const clampScale = (value) => Math.max(0.3, Math.min(6, value));
+            const clampScale = (value) => Math.max(0.2, Math.min(8, value));
 
             const apply = () => {
-                svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+                content.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
             };
 
-            const reset = () => {
-                state.scale = 1;
-                state.x = 0;
-                state.y = 0;
+            const fitToCanvas = () => {
+                const svg = content.querySelector("svg");
+                if (!svg) return;
+
+                let sourceWidth = 0;
+                let sourceHeight = 0;
+                const vb = svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal : null;
+                if (vb && vb.width && vb.height) {
+                    sourceWidth = vb.width;
+                    sourceHeight = vb.height;
+                }
+                if (!sourceWidth || !sourceHeight) {
+                    const bbox = typeof svg.getBBox === "function" ? svg.getBBox() : null;
+                    if (bbox && bbox.width && bbox.height) {
+                        sourceWidth = bbox.width;
+                        sourceHeight = bbox.height;
+                    }
+                }
+                if (!sourceWidth || !sourceHeight) {
+                    const rect = svg.getBoundingClientRect();
+                    sourceWidth = rect.width || 1200;
+                    sourceHeight = rect.height || 800;
+                }
+
+                const availW = Math.max(200, canvas.clientWidth - 48);
+                const availH = Math.max(200, canvas.clientHeight - 48);
+                state.scale = clampScale(Math.min(availW / sourceWidth, availH / sourceHeight, 1.2));
+                state.x = Math.round((canvas.clientWidth - sourceWidth * state.scale) / 2);
+                state.y = Math.round((canvas.clientHeight - sourceHeight * state.scale) / 2);
                 apply();
             };
 
-            const setActive = (active) => {
-                state.active = Boolean(active);
+            const close = () => {
+                state.open = false;
                 state.dragging = false;
-                container.classList.toggle("zoom-active", state.active);
-                container.classList.remove("dragging");
-                hint.textContent = state.active ? "滚轮缩放 / 拖动平移 / 双击复位" : "双击启用缩放/拖动";
-                if (!state.active) {
-                    reset();
-                }
+                overlay.classList.remove("show");
+                canvas.classList.remove("dragging");
+                content.innerHTML = "";
             };
 
-            container.addEventListener("dblclick", (event) => {
-                event.preventDefault();
-                setActive(!state.active);
+            const open = (sourceSvg) => {
+                if (!sourceSvg) return;
+                const clone = sourceSvg.cloneNode(true);
+                clone.removeAttribute("style");
+                content.innerHTML = "";
+                content.appendChild(clone);
+                overlay.classList.add("show");
+                state.open = true;
+                state.dragging = false;
+                canvas.classList.remove("dragging");
+                window.requestAnimationFrame(fitToCanvas);
+            };
+
+            closeBtn.addEventListener("click", close);
+            resetBtn.addEventListener("click", fitToCanvas);
+            overlay.addEventListener("click", (event) => {
+                if (event.target === overlay) close();
             });
 
-            container.addEventListener("wheel", (event) => {
-                if (!state.active) return;
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape" && state.open) {
+                    close();
+                }
+            });
+
+            canvas.addEventListener("dblclick", (event) => {
+                if (!state.open) return;
                 event.preventDefault();
-                const rect = container.getBoundingClientRect();
+                fitToCanvas();
+            });
+
+            canvas.addEventListener("wheel", (event) => {
+                if (!state.open) return;
+                event.preventDefault();
+                const rect = canvas.getBoundingClientRect();
                 const cx = event.clientX - rect.left;
                 const cy = event.clientY - rect.top;
                 const zoomFactor = event.deltaY < 0 ? 1.12 : 0.9;
@@ -3069,13 +3470,13 @@ __CW_SHARED_UI_TOKENS__
                 apply();
             }, { passive: false });
 
-            container.addEventListener("mousedown", (event) => {
-                if (!state.active || event.button !== 0) return;
+            canvas.addEventListener("mousedown", (event) => {
+                if (!state.open || event.button !== 0) return;
                 event.preventDefault();
                 state.dragging = true;
                 state.startX = event.clientX - state.x;
                 state.startY = event.clientY - state.y;
-                container.classList.add("dragging");
+                canvas.classList.add("dragging");
             });
 
             window.addEventListener("mousemove", (event) => {
@@ -3088,14 +3489,32 @@ __CW_SHARED_UI_TOKENS__
             window.addEventListener("mouseup", () => {
                 if (!state.dragging) return;
                 state.dragging = false;
-                container.classList.remove("dragging");
+                canvas.classList.remove("dragging");
+            });
+
+            return { open };
+        }
+
+        function bindMermaidLightbox(container, lightbox) {
+            if (!container || !lightbox || container.dataset.lightboxBound === "1") return;
+            container.dataset.lightboxBound = "1";
+            container.title = "双击打开独立视图";
+            container.addEventListener("dblclick", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const svg = container.querySelector("svg");
+                if (!svg) return;
+                lightbox.open(svg);
             });
         }
 
         document.addEventListener("DOMContentLoaded", function() {
-            const nodes = document.querySelectorAll(".mermaid");
+            const lightbox = createMermaidLightbox();
+            const nodes = Array.from(document.querySelectorAll(".mermaid"));
             mermaid.init(undefined, nodes);
-            nodes.forEach((node) => enableMermaidZoom(node));
+            window.setTimeout(() => {
+                nodes.forEach((node) => bindMermaidLightbox(node, lightbox));
+            }, 0);
         });
     </script>
 </body>
@@ -4366,7 +4785,7 @@ __CW_SHARED_UI_LAYOUT__
         }
 
         function _normalizeSubprojectPath(path) {
-            let value = String(path || "").trim().replace(/\\/g, "/");
+            let value = String(path || "").trim().replace(/\\\\/g, "/");
             while (value.startsWith("./")) value = value.slice(2);
             value = value.replace(/^\/+|\/+$/g, "");
             if (value === "." || value === "") return "";
