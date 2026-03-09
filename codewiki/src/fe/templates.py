@@ -1171,8 +1171,8 @@ __CW_SHARED_UI_TOKENS__
         .chat-drawer-toggle {
             position: fixed;
             right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
+            top: 12px;
+            transform: none;
             width: 44px;
             height: 44px;
             border: 1px solid var(--line-strong);
@@ -1199,7 +1199,39 @@ __CW_SHARED_UI_TOKENS__
         }
 
         body.chat-open .chat-drawer-toggle {
-            right: calc(var(--chat-panel-width) + 12px);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .chat-panel-toggle {
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            color: var(--primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            flex: 0 0 34px;
+        }
+
+        .chat-panel-toggle:hover {
+            border-color: var(--line-strong);
+            background: var(--primary-soft);
+        }
+
+        .chat-panel-toggle svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .chat-title-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
         }
 
         .chat-header {
@@ -1287,6 +1319,62 @@ __CW_SHARED_UI_TOKENS__
 
         .chat-bubble.assistant {
             background: #f8fafc;
+        }
+
+        .chat-bubble.assistant.markdown {
+            white-space: normal;
+            line-height: 1.5;
+        }
+
+        .chat-bubble.assistant.markdown p {
+            margin: 0 0 0.58rem;
+        }
+
+        .chat-bubble.assistant.markdown p:last-child {
+            margin-bottom: 0;
+        }
+
+        .chat-bubble.assistant.markdown pre {
+            margin: 0.5rem 0;
+            padding: 8px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            overflow-x: auto;
+        }
+
+        .chat-bubble.assistant.markdown code {
+            font-family: "Courier New", Consolas, monospace;
+            font-size: 0.85em;
+            background: var(--surface-soft);
+            border: 1px solid var(--line);
+            padding: 0.08rem 0.3rem;
+        }
+
+        .chat-bubble.assistant.markdown pre code {
+            border: none;
+            padding: 0;
+            background: transparent;
+        }
+
+        .chat-bubble.assistant.markdown ul,
+        .chat-bubble.assistant.markdown ol {
+            margin: 0.35rem 0 0.55rem 1.2rem;
+            padding: 0;
+        }
+
+        .chat-bubble.assistant.markdown table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.5rem 0;
+            font-size: 0.77rem;
+        }
+
+        .chat-bubble.assistant.markdown th,
+        .chat-bubble.assistant.markdown td {
+            border: 1px solid var(--line);
+            padding: 4px 6px;
+            vertical-align: top;
+            text-align: left;
         }
 
         .chat-input-wrap {
@@ -1625,18 +1713,6 @@ __CW_SHARED_UI_TOKENS__
                 max-height: 260px;
             }
 
-            .chat-drawer-toggle {
-                top: auto;
-                bottom: 14px;
-                transform: none;
-                right: 12px;
-            }
-
-            body.chat-open .chat-drawer-toggle {
-                right: 12px;
-                bottom: 14px;
-            }
-
             .chat-header-top {
                 align-items: flex-start;
                 flex-direction: column;
@@ -1818,7 +1894,17 @@ __CW_SHARED_UI_TOKENS__
         <aside class="chat-panel" data-chat-api="{{ chat_api_url }}" data-chat-protocol="{{ chat_protocol }}">
             <div class="chat-header">
                 <div class="chat-header-top">
-                    <div class="chat-title">CodeWikiAgent</div>
+                    <div class="chat-title-wrap">
+                        <button id="chatPanelToggle" class="chat-panel-toggle" type="button" title="收起聊天助手" aria-label="收起聊天助手">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <rect x="6" y="6" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.7"/>
+                                <circle cx="10" cy="11" r="1.1" fill="currentColor"/>
+                                <circle cx="14" cy="11" r="1.1" fill="currentColor"/>
+                                <path d="M12 4.2V6M9.4 17.5h5.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                        <div class="chat-title">CodeWikiAgent</div>
+                    </div>
                     <div class="chat-session-controls">
                         <select id="chatSessionSelect" class="chat-session-select"></select>
                         <button id="chatNewSessionBtn" class="chat-new-session" type="button">新建会话</button>
@@ -1844,6 +1930,8 @@ __CW_SHARED_UI_TOKENS__
         {% endif %}
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script>
         mermaid.initialize({
             startOnLoad: true,
@@ -2016,6 +2104,7 @@ __CW_SHARED_UI_TOKENS__
 
             const chatPanel = document.querySelector(".chat-panel");
             const chatDrawerToggle = document.getElementById("chatDrawerToggle");
+            const chatPanelToggle = document.getElementById("chatPanelToggle");
             const chatMessagesEl = document.getElementById("chatMessages");
             const chatInputEl = document.getElementById("chatInput");
             const chatSendBtn = document.getElementById("chatSendBtn");
@@ -2040,6 +2129,11 @@ __CW_SHARED_UI_TOKENS__
                     chatDrawerToggle.setAttribute("title", isOpen ? "收起聊天助手" : "打开聊天助手");
                     chatDrawerToggle.setAttribute("aria-label", isOpen ? "收起聊天助手" : "打开聊天助手");
                 }
+                if (chatPanelToggle) {
+                    chatPanelToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+                    chatPanelToggle.setAttribute("title", isOpen ? "收起聊天助手" : "打开聊天助手");
+                    chatPanelToggle.setAttribute("aria-label", isOpen ? "收起聊天助手" : "打开聊天助手");
+                }
                 try {
                     window.localStorage.setItem(chatDrawerKey, isOpen ? "1" : "0");
                 } catch (e) {
@@ -2049,6 +2143,12 @@ __CW_SHARED_UI_TOKENS__
 
             if (chatDrawerToggle) {
                 chatDrawerToggle.addEventListener("click", function() {
+                    const isOpen = document.body.classList.contains("chat-open");
+                    setDrawerState(!isOpen);
+                });
+            }
+            if (chatPanelToggle) {
+                chatPanelToggle.addEventListener("click", function() {
                     const isOpen = document.body.classList.contains("chat-open");
                     setDrawerState(!isOpen);
                 });
@@ -2133,6 +2233,31 @@ __CW_SHARED_UI_TOKENS__
                 return chatStore.sessions.find(function(item) { return item.id === chatStore.activeSessionId; }) || null;
             };
 
+            const escapeHtml = (value) => {
+                return String(value || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+            };
+
+            const renderMarkdown = (rawText) => {
+                const text = String(rawText || "");
+                if (window.marked && typeof window.marked.parse === "function") {
+                    try {
+                        const html = window.marked.parse(text, { breaks: true, gfm: true });
+                        if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
+                            return window.DOMPurify.sanitize(html);
+                        }
+                        return html;
+                    } catch (e) {
+                        return escapeHtml(text);
+                    }
+                }
+                return escapeHtml(text);
+            };
+
             const renderSessionOptions = () => {
                 chatSessionSelectEl.innerHTML = "";
                 chatStore.sessions.forEach(function(session) {
@@ -2151,7 +2276,12 @@ __CW_SHARED_UI_TOKENS__
                 session.messages.forEach(function(msg) {
                     const bubble = document.createElement("div");
                     bubble.className = "chat-bubble " + (msg.role === "user" ? "user" : "assistant");
-                    bubble.textContent = String(msg.content || "");
+                    if (msg.role === "assistant") {
+                        bubble.classList.add("markdown");
+                        bubble.innerHTML = renderMarkdown(msg.content || "");
+                    } else {
+                        bubble.textContent = String(msg.content || "");
+                    }
                     chatMessagesEl.appendChild(bubble);
                 });
                 chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
@@ -2452,7 +2582,7 @@ __CW_SHARED_UI_LAYOUT__
 
         .console-tabs {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 8px;
             margin-bottom: 12px;
         }
@@ -2923,7 +3053,6 @@ __CW_SHARED_UI_LAYOUT__
             <button type="button" class="admin-nav-btn" data-admin-panel="panel-create">新建任务</button>
             <button type="button" class="admin-nav-btn" data-admin-panel="panel-doc-types">文档模板设置</button>
             <button type="button" class="admin-nav-btn" data-admin-panel="panel-agent">Agent 设置</button>
-            <button type="button" class="admin-nav-btn" data-admin-panel="panel-tasks">全部任务 ({{ total_count }})</button>
         </div>
 
         <section class="console-body">
@@ -2950,6 +3079,116 @@ __CW_SHARED_UI_LAYOUT__
                         <div class="label">Failed</div>
                     </div>
                 </div>
+
+                <div class="panel-head" style="margin-top:14px;">
+                    <h2>全部任务 ({{ total_count }})</h2>
+                    <div class="panel-desc">支持状态筛选、日志查看、参数回填重新生成。</div>
+                </div>
+
+                <div class="task-toolbar">
+                    <input id="taskSearch" type="text" placeholder="按标题、URL、进度、任务 ID 搜索...">
+                    <select id="taskStatusFilter">
+                        <option value="all">全部状态</option>
+                        <option value="queued">Queued</option>
+                        <option value="processing">Processing</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                        <option value="stopped">Stopped</option>
+                    </select>
+                    <button class="btn" type="button" id="adminRefresh">刷新</button>
+                </div>
+
+                {% if jobs and jobs|length > 0 %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>任务</th>
+                                <th>状态</th>
+                                <th>进度</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tasksBody">
+                            {% for job in jobs %}
+                            <tr
+                                data-job-id="{{ job.job_id }}"
+                                data-status="{{ job.status }}"
+                                data-search="{{ (job.title or '') ~ ' ' ~ job.repo_url ~ ' ' ~ job.job_id ~ ' ' ~ (job.progress or '') ~ ' ' ~ ((job.options.subproject_name if job.options and job.options.subproject_name else '') ) ~ ' ' ~ ((job.options.subproject_path if job.options and job.options.subproject_path else '') ) }}"
+                                data-repo-url="{{ job.repo_url }}"
+                                data-commit-id="{{ job.commit_id or '' }}"
+                                data-priority="{{ job.priority }}"
+                                data-subproject-name="{{ job.options.subproject_name if job.options and job.options.subproject_name else '' }}"
+                                data-subproject-path="{{ job.options.subproject_path if job.options and job.options.subproject_path else '' }}"
+                                data-output="{{ job.options.output if job.options and job.options.output else 'docs/codewiki' }}"
+                                data-create-branch="{{ 'true' if job.options and job.options.create_branch else 'false' }}"
+                                data-github-pages="{{ 'true' if job.options and job.options.github_pages else 'false' }}"
+                                data-no-cache="{{ 'true' if job.options and job.options.no_cache else 'false' }}"
+                                data-include="{{ job.options.include if job.options and job.options.include else '' }}"
+                                data-exclude="{{ job.options.exclude if job.options and job.options.exclude else '' }}"
+                                data-focus="{{ job.options.focus if job.options and job.options.focus else '' }}"
+                                data-doc-type="{{ job.options.doc_type if job.options and job.options.doc_type else '' }}"
+                                data-instructions="{{ job.options.instructions if job.options and job.options.instructions else '' }}"
+                                data-skills="{{ job.options.skills if job.options and job.options.skills else '' }}"
+                                data-max-tokens="{{ job.options.max_tokens if job.options and job.options.max_tokens is not none else '' }}"
+                                data-max-token-per-module="{{ job.options.max_token_per_module if job.options and job.options.max_token_per_module is not none else '' }}"
+                                data-max-token-per-leaf-module="{{ job.options.max_token_per_leaf_module if job.options and job.options.max_token_per_leaf_module is not none else '' }}"
+                                data-max-depth="{{ job.options.max_depth if job.options and job.options.max_depth is not none else '' }}"
+                                data-output-lang="{{ job.options.output_lang if job.options and job.options.output_lang else '' }}"
+                                data-agent-cmd="{{ job.options.agent_cmd if job.options and job.options.agent_cmd else '' }}"
+                                data-custom-cli-args="{{ job.options.custom_cli_args if job.options and job.options.custom_cli_args else '' }}"
+                                data-concurrency="{{ job.options.concurrency if job.options and job.options.concurrency is not none else 4 }}"
+                            >
+                                <td>
+                                    <div class="task-title">{{ job.title or job.repo_url }}</div>
+                                    <div class="task-url">{{ job.repo_url }}</div>
+                                    {% if job.options and (job.options.subproject_name or job.options.subproject_path) %}
+                                    <div class="task-url">子项目: {{ job.options.subproject_name or job.options.subproject_path }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="status {{ job.status }}">{{ job.status }}</span>
+                                </td>
+                                <td>
+                                    <div class="task-progress">{{ job.progress }}</div>
+                                    {% if job.status == 'failed' and job.error_message %}
+                                    <details class="error">
+                                        <summary>查看错误</summary>
+                                        <pre>{{ job.error_message }}</pre>
+                                    </details>
+                                    {% endif %}
+                                </td>
+                                <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <div class="task-actions">
+                                        {% if job.status == 'completed' %}
+                                        <a href="/docs/{{ job.job_id }}" class="btn" title="查看文档">查看</a>
+                                        {% endif %}
+                                        {% if job.status == 'processing' %}
+                                        <button class="btn" onclick="openTaskLog('{{ job.job_id }}', true)" title="查看实时日志">日志</button>
+                                        <button class="btn btn-danger" onclick="stopTask('{{ job.job_id }}')" title="停止任务">停止</button>
+                                        {% endif %}
+                                        {% if job.status == 'queued' %}
+                                        <button class="btn btn-danger" onclick="stopTask('{{ job.job_id }}')" title="停止任务">停止</button>
+                                        {% endif %}
+                                        {% if job.status in ['completed', 'failed', 'stopped'] %}
+                                        <button class="btn" onclick="openTaskLog('{{ job.job_id }}', false)" title="查看日志">日志</button>
+                                        <button class="btn" onclick="regenerateTask('{{ job.job_id }}')" title="载入原参数到创建任务">重新生成</button>
+                                        {% endif %}
+                                        {% if job.status != 'processing' %}
+                                        <button class="btn btn-danger" onclick="deleteTask('{{ job.job_id }}')" title="删除">删除</button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty">暂无任务，请先创建。</div>
+                {% endif %}
             </section>
 
             <section class="panel admin-panel" id="panel-create">
@@ -3208,117 +3447,6 @@ __CW_SHARED_UI_LAYOUT__
                 </div>
             </section>
 
-            <section class="panel admin-panel" id="panel-tasks">
-                <div class="panel-head">
-                    <h2>全部任务 ({{ total_count }})</h2>
-                    <div class="panel-desc">支持状态筛选、日志查看、参数回填重新生成。</div>
-                </div>
-
-                <div class="task-toolbar">
-                    <input id="taskSearch" type="text" placeholder="按标题、URL、进度、任务 ID 搜索...">
-                    <select id="taskStatusFilter">
-                        <option value="all">全部状态</option>
-                        <option value="queued">Queued</option>
-                        <option value="processing">Processing</option>
-                        <option value="completed">Completed</option>
-                        <option value="failed">Failed</option>
-                        <option value="stopped">Stopped</option>
-                    </select>
-                    <button class="btn" type="button" id="adminRefresh">刷新</button>
-                </div>
-
-                {% if jobs and jobs|length > 0 %}
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>任务</th>
-                                <th>状态</th>
-                                <th>进度</th>
-                                <th>创建时间</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tasksBody">
-                            {% for job in jobs %}
-                            <tr
-                                data-job-id="{{ job.job_id }}"
-                                data-status="{{ job.status }}"
-                                data-search="{{ (job.title or '') ~ ' ' ~ job.repo_url ~ ' ' ~ job.job_id ~ ' ' ~ (job.progress or '') ~ ' ' ~ ((job.options.subproject_name if job.options and job.options.subproject_name else '') ) ~ ' ' ~ ((job.options.subproject_path if job.options and job.options.subproject_path else '') ) }}"
-                                data-repo-url="{{ job.repo_url }}"
-                                data-commit-id="{{ job.commit_id or '' }}"
-                                data-priority="{{ job.priority }}"
-                                data-subproject-name="{{ job.options.subproject_name if job.options and job.options.subproject_name else '' }}"
-                                data-subproject-path="{{ job.options.subproject_path if job.options and job.options.subproject_path else '' }}"
-                                data-output="{{ job.options.output if job.options and job.options.output else 'docs/codewiki' }}"
-                                data-create-branch="{{ 'true' if job.options and job.options.create_branch else 'false' }}"
-                                data-github-pages="{{ 'true' if job.options and job.options.github_pages else 'false' }}"
-                                data-no-cache="{{ 'true' if job.options and job.options.no_cache else 'false' }}"
-                                data-include="{{ job.options.include if job.options and job.options.include else '' }}"
-                                data-exclude="{{ job.options.exclude if job.options and job.options.exclude else '' }}"
-                                data-focus="{{ job.options.focus if job.options and job.options.focus else '' }}"
-                                data-doc-type="{{ job.options.doc_type if job.options and job.options.doc_type else '' }}"
-                                data-instructions="{{ job.options.instructions if job.options and job.options.instructions else '' }}"
-                                data-skills="{{ job.options.skills if job.options and job.options.skills else '' }}"
-                                data-max-tokens="{{ job.options.max_tokens if job.options and job.options.max_tokens is not none else '' }}"
-                                data-max-token-per-module="{{ job.options.max_token_per_module if job.options and job.options.max_token_per_module is not none else '' }}"
-                                data-max-token-per-leaf-module="{{ job.options.max_token_per_leaf_module if job.options and job.options.max_token_per_leaf_module is not none else '' }}"
-                                data-max-depth="{{ job.options.max_depth if job.options and job.options.max_depth is not none else '' }}"
-                                data-output-lang="{{ job.options.output_lang if job.options and job.options.output_lang else '' }}"
-                                data-agent-cmd="{{ job.options.agent_cmd if job.options and job.options.agent_cmd else '' }}"
-                                data-custom-cli-args="{{ job.options.custom_cli_args if job.options and job.options.custom_cli_args else '' }}"
-                                data-concurrency="{{ job.options.concurrency if job.options and job.options.concurrency is not none else 4 }}"
-                            >
-                                <td>
-                                    <div class="task-title">{{ job.title or job.repo_url }}</div>
-                                    <div class="task-url">{{ job.repo_url }}</div>
-                                    {% if job.options and (job.options.subproject_name or job.options.subproject_path) %}
-                                    <div class="task-url">子项目: {{ job.options.subproject_name or job.options.subproject_path }}</div>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <span class="status {{ job.status }}">{{ job.status }}</span>
-                                </td>
-                                <td>
-                                    <div class="task-progress">{{ job.progress }}</div>
-                                    {% if job.status == 'failed' and job.error_message %}
-                                    <details class="error">
-                                        <summary>查看错误</summary>
-                                        <pre>{{ job.error_message }}</pre>
-                                    </details>
-                                    {% endif %}
-                                </td>
-                                <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td>
-                                    <div class="task-actions">
-                                        {% if job.status == 'completed' %}
-                                        <a href="/docs/{{ job.job_id }}" class="btn" title="查看文档">查看</a>
-                                        {% endif %}
-                                        {% if job.status == 'processing' %}
-                                        <button class="btn" onclick="openTaskLog('{{ job.job_id }}', true)" title="查看实时日志">日志</button>
-                                        <button class="btn btn-danger" onclick="stopTask('{{ job.job_id }}')" title="停止任务">停止</button>
-                                        {% endif %}
-                                        {% if job.status == 'queued' %}
-                                        <button class="btn btn-danger" onclick="stopTask('{{ job.job_id }}')" title="停止任务">停止</button>
-                                        {% endif %}
-                                        {% if job.status in ['completed', 'failed', 'stopped'] %}
-                                        <button class="btn" onclick="openTaskLog('{{ job.job_id }}', false)" title="查看日志">日志</button>
-                                        <button class="btn" onclick="regenerateTask('{{ job.job_id }}')" title="载入原参数到创建任务">重新生成</button>
-                                        {% endif %}
-                                        {% if job.status != 'processing' %}
-                                        <button class="btn btn-danger" onclick="deleteTask('{{ job.job_id }}')" title="删除">删除</button>
-                                        {% endif %}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% else %}
-                <div class="empty">暂无任务，请先创建。</div>
-                {% endif %}
-            </section>
         </section>
 
         <div id="logModal" class="log-modal">
