@@ -1559,6 +1559,10 @@ __CW_SHARED_UI_TOKENS__
             white-space: pre-wrap;
         }
 
+        .chat-stream-events {
+            margin-bottom: 8px;
+        }
+
         .chat-bubble.assistant.structured {
             white-space: normal;
             padding: 10px 11px;
@@ -1584,9 +1588,9 @@ __CW_SHARED_UI_TOKENS__
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 7px;
             padding: 7px 9px;
-            font-size: 0.75rem;
+            font-size: 0.74rem;
             font-weight: 600;
             color: #415b78;
             user-select: none;
@@ -1596,53 +1600,65 @@ __CW_SHARED_UI_TOKENS__
             display: none;
         }
 
-        .chat-event-tag {
+        .chat-event-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 44px;
-            height: 19px;
-            padding: 0 6px;
-            border-radius: 999px;
-            font-size: 0.68rem;
-            letter-spacing: 0.01em;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
             border: 1px solid transparent;
             flex: 0 0 auto;
         }
 
-        .chat-event-title {
+        .chat-event-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .chat-event-brief {
             flex: 1 1 auto;
             min-width: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            color: #345170;
         }
 
-        .chat-event-status {
-            font-size: 0.68rem;
-            padding: 1px 5px;
-            border-radius: 999px;
-            border: 1px solid transparent;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
+        .chat-event-duration {
+            font-size: 0.69rem;
+            color: #6e8298;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
             flex: 0 0 auto;
         }
 
-        .chat-event-status.ok {
-            color: #21633f;
-            background: #e9f8ef;
+        .chat-event-state {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #8fa8bf;
+            border: 1px solid transparent;
+            flex: 0 0 auto;
+        }
+
+        .chat-event-state.neutral {
+            background: #8fa8bf;
+            border-color: #b5c4d3;
+        }
+
+        .chat-event-state.ok {
+            background: #57b57f;
             border-color: #9cccb0;
         }
 
-        .chat-event-status.error {
-            color: #8f2b2b;
-            background: #fbecec;
+        .chat-event-state.error {
+            background: #d56a6a;
             border-color: #ebb0b0;
         }
 
-        .chat-event-status.running {
-            color: #7a5d11;
-            background: #fff8e3;
+        .chat-event-state.running {
+            background: #d1ad45;
             border-color: #e3d08e;
         }
 
@@ -1675,25 +1691,25 @@ __CW_SHARED_UI_TOKENS__
             line-height: 1.5;
         }
 
-        .chat-event-thinking .chat-event-tag {
+        .chat-event-thinking .chat-event-icon {
             color: #6f4f00;
             background: #fff3cf;
             border-color: #e7d093;
         }
 
-        .chat-event-tool .chat-event-tag {
+        .chat-event-tool .chat-event-icon {
             color: #204f78;
             background: #e7f3fe;
             border-color: #a6c7e3;
         }
 
-        .chat-event-skill .chat-event-tag {
+        .chat-event-skill .chat-event-icon {
             color: #5c356f;
             background: #f2eaff;
             border-color: #ccb6e7;
         }
 
-        .chat-event-content-block .chat-event-tag {
+        .chat-event-content-block .chat-event-icon {
             color: #285931;
             background: #e8f8ed;
             border-color: #9acaa7;
@@ -1806,6 +1822,14 @@ __CW_SHARED_UI_TOKENS__
             color: #bdd6ee;
         }
 
+        [data-theme="dark"] .chat-event-brief {
+            color: #d2e4f5;
+        }
+
+        [data-theme="dark"] .chat-event-duration {
+            color: #90aac3;
+        }
+
         [data-theme="dark"] .chat-event-body {
             border-top-color: #38506a;
         }
@@ -1816,22 +1840,24 @@ __CW_SHARED_UI_TOKENS__
             color: #dbe8f6;
         }
 
-        [data-theme="dark"] .chat-event-status.ok {
-            color: #90d9ab;
-            background: #193926;
+        [data-theme="dark"] .chat-event-state.ok {
+            background: #68c18e;
             border-color: #2f6f47;
         }
 
-        [data-theme="dark"] .chat-event-status.error {
-            color: #f2b1b1;
-            background: #3e1d1d;
+        [data-theme="dark"] .chat-event-state.error {
+            background: #df7f7f;
             border-color: #7d3a3a;
         }
 
-        [data-theme="dark"] .chat-event-status.running {
-            color: #f1d792;
-            background: #3b3218;
+        [data-theme="dark"] .chat-event-state.running {
+            background: #dfbe62;
             border-color: #7f6b31;
+        }
+
+        [data-theme="dark"] .chat-event-state.neutral {
+            background: #7890a7;
+            border-color: #4e647a;
         }
 
         .chat-input-wrap {
@@ -2500,7 +2526,12 @@ __CW_SHARED_UI_TOKENS__
             </svg>
         </button>
 
-        <aside class="chat-panel" data-chat-api="{{ chat_api_url }}" data-chat-protocol="{{ chat_protocol }}">
+        <aside
+            class="chat-panel"
+            data-chat-api="{{ chat_api_url }}"
+            data-chat-stream-api="{{ chat_stream_api_url or '' }}"
+            data-chat-protocol="{{ chat_protocol }}"
+        >
             <div class="chat-header">
                 <div class="chat-header-top">
                     <div class="chat-title-wrap">
@@ -3073,6 +3104,7 @@ __CW_SHARED_UI_TOKENS__
 
             const greetingText = "你好，我是 CodeWikiAgent。你可以问我当前模块实现、调用链、关键函数逻辑。";
             const apiUrl = chatPanel.getAttribute("data-chat-api") || "";
+            const streamApiUrl = chatPanel.getAttribute("data-chat-stream-api") || "";
             const protocol = chatPanel.getAttribute("data-chat-protocol") || "a2ui-0.1";
             let chatStore = { activeSessionId: "", sessions: [] };
 
@@ -3213,13 +3245,64 @@ __CW_SHARED_UI_TOKENS__
             };
 
             const CHAT_EVENT_META = {
-                thinking: { label: "思考块", className: "chat-event-thinking", defaultCollapsed: true },
-                tool: { label: "工具块", className: "chat-event-tool", defaultCollapsed: true },
-                skill: { label: "SKILL块", className: "chat-event-skill", defaultCollapsed: true },
-                content: { label: "内容块", className: "chat-event-content-block", defaultCollapsed: false }
+                thinking: {
+                    className: "chat-event-thinking",
+                    defaultCollapsed: true,
+                    icon: `
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M12 3.3a6.9 6.9 0 0 0-4.9 11.8c.9.9 1.5 1.9 1.7 3.1h6.4c.2-1.2.8-2.2 1.7-3.1A6.9 6.9 0 0 0 12 3.3z" stroke="currentColor" stroke-width="1.7"/>
+                            <path d="M9.7 21h4.6M10.3 18.8h3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        </svg>
+                    `,
+                },
+                tool: {
+                    className: "chat-event-tool",
+                    defaultCollapsed: true,
+                    icon: `
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M13.5 5.2a4 4 0 0 0 4.9 4.9L11 17.6a2.3 2.3 0 0 1-3.3 0l-1.3-1.3a2.3 2.3 0 0 1 0-3.3l7.1-7.8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                            <path d="M14.8 9.2l-1.7 1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        </svg>
+                    `,
+                },
+                skill: {
+                    className: "chat-event-skill",
+                    defaultCollapsed: true,
+                    icon: `
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M9.5 4.2h-2a2 2 0 0 0-2 2v2M14.5 4.2h2a2 2 0 0 1 2 2v2M14.5 19.8h2a2 2 0 0 0 2-2v-2M9.5 19.8h-2a2 2 0 0 1-2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                            <rect x="9.1" y="9.1" width="5.8" height="5.8" rx="1.4" stroke="currentColor" stroke-width="1.7"/>
+                        </svg>
+                    `,
+                },
+                content: {
+                    className: "chat-event-content-block",
+                    defaultCollapsed: false,
+                    icon: `
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M5.5 6.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v6.9a2 2 0 0 1-2 2h-6l-3.8 3v-3h-.2a2 2 0 0 1-2-2V6.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                            <path d="M8.5 8.8h7M8.5 11.5h4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        </svg>
+                    `,
+                },
             };
 
-            const normalizeAssistantEvents = (events, fallbackText) => {
+            const toEpoch = (value) => {
+                if (!value) return 0;
+                const ms = Date.parse(String(value));
+                return Number.isFinite(ms) ? ms : 0;
+            };
+
+            const formatDurationMs = (rawMs) => {
+                const ms = Math.max(0, Number(rawMs) || 0);
+                if (ms < 1000) return ms + " ms";
+                const sec = ms / 1000;
+                if (sec < 10) return sec.toFixed(2) + " s";
+                if (sec < 100) return sec.toFixed(1) + " s";
+                return Math.round(sec) + " s";
+            };
+
+            const normalizeAssistantEvents = (events, fallbackText, ensureContent = true) => {
                 const list = Array.isArray(events)
                     ? events.filter(function(item) { return item && typeof item === "object"; })
                     : [];
@@ -3229,7 +3312,8 @@ __CW_SHARED_UI_TOKENS__
                         title: "回答",
                         content: String(fallbackText || ""),
                         collapsed: false,
-                        status: "ok"
+                        status: "ok",
+                        duration_ms: 0
                     }];
                 }
                 const normalized = list.map(function(item) {
@@ -3238,35 +3322,77 @@ __CW_SHARED_UI_TOKENS__
                         title: String(item.title || ""),
                         content: String(item.content || ""),
                         input: String(item.input || ""),
+                        tool_name: String(item.tool_name || ""),
                         status: String(item.status || ""),
-                        collapsed: typeof item.collapsed === "boolean" ? item.collapsed : undefined
+                        collapsed: typeof item.collapsed === "boolean" ? item.collapsed : undefined,
+                        timestamp: String(item.timestamp || ""),
+                        started_at: String(item.started_at || item.timestamp || ""),
+                        finished_at: String(item.finished_at || ""),
+                        duration_ms: Number(item.duration_ms || 0),
                     };
                 });
                 const hasContent = normalized.some(function(item) { return item.type === "content"; });
-                if (!hasContent && String(fallbackText || "").trim()) {
+                if (ensureContent && !hasContent && String(fallbackText || "").trim()) {
                     normalized.push({
                         type: "content",
                         title: "回答",
                         content: String(fallbackText || ""),
                         collapsed: false,
-                        status: "ok"
+                        status: "ok",
+                        duration_ms: 0
                     });
                 }
                 return normalized;
             };
 
-            const renderAssistantStructured = (events, fallbackText) => {
-                const normalized = normalizeAssistantEvents(events, fallbackText);
-                return normalized.map(function(event, index) {
+            const deriveEventDuration = (event) => {
+                if (Number.isFinite(event.duration_ms) && event.duration_ms > 0) {
+                    return Math.max(0, Number(event.duration_ms));
+                }
+                const started = toEpoch(event.started_at || event.timestamp);
+                if (!started) return 0;
+                const status = String(event.status || "").toLowerCase();
+                const end = toEpoch(event.finished_at) || (status === "running" ? Date.now() : started);
+                return Math.max(0, end - started);
+            };
+
+            const buildEventBrief = (eventType, event) => {
+                if (eventType === "tool") {
+                    const explicit = String(event.tool_name || "").trim();
+                    if (explicit) return explicit;
+                    const title = String(event.title || "").trim();
+                    const matched = title.match(/[:：]\\s*(.+)$/);
+                    if (matched && matched[1]) return matched[1].trim();
+                    return "shell";
+                }
+
+                const title = String(event.title || "")
+                    .replace(/思考|已启用技能|工具调用|回答|块/g, "")
+                    .replace(/[:：]/g, " ")
+                    .trim();
+                if (title) return title;
+
+                const line = String(event.content || "").split(/\r?\n/).find(function(part) {
+                    return String(part || "").trim();
+                }) || "";
+                const normalized = String(line).trim();
+                if (!normalized) return " ";
+                return normalized.length > 48 ? normalized.slice(0, 48) + "…" : normalized;
+            };
+
+            const renderAssistantStructured = (events, fallbackText, ensureContent = true) => {
+                const normalized = normalizeAssistantEvents(events, fallbackText, ensureContent);
+                return normalized.map(function(event) {
                     const eventType = CHAT_EVENT_META[event.type] ? event.type : "content";
                     const meta = CHAT_EVENT_META[eventType];
-                    const eventTitle = event.title || meta.label;
                     const status = event.status ? event.status.toLowerCase() : "";
                     const collapsed = typeof event.collapsed === "boolean" ? event.collapsed : meta.defaultCollapsed;
                     const openAttr = collapsed ? "" : " open";
-                    const statusClass = (status === "ok" || status === "error" || status === "running") ? status : "";
-                    const statusLabelMap = { ok: "OK", error: "ERROR", running: "RUNNING" };
-                    const statusLabel = statusClass ? (statusLabelMap[statusClass] || statusClass.toUpperCase()) : "";
+                    const statusClass = (
+                        status === "ok" || status === "error" || status === "running"
+                    ) ? status : "neutral";
+                    const brief = buildEventBrief(eventType, event);
+                    const durationText = formatDurationMs(deriveEventDuration(event));
                     const inputHtml = event.input
                         ? `<div class="chat-event-io-title">输入参数</div><pre class="chat-event-io">${escapeHtml(event.input)}</pre>`
                         : "";
@@ -3275,9 +3401,10 @@ __CW_SHARED_UI_TOKENS__
                         <div class="chat-event-block ${meta.className}">
                             <details class="chat-event-details" ${openAttr}>
                                 <summary class="chat-event-summary">
-                                    <span class="chat-event-tag">${meta.label}</span>
-                                    <span class="chat-event-title">${escapeHtml(eventTitle)}</span>
-                                    ${statusLabel ? `<span class="chat-event-status ${statusClass}">${statusLabel}</span>` : ""}
+                                    <span class="chat-event-icon">${meta.icon}</span>
+                                    <span class="chat-event-brief">${escapeHtml(brief)}</span>
+                                    <span class="chat-event-duration">${durationText}</span>
+                                    <span class="chat-event-state ${statusClass}"></span>
                                 </summary>
                                 <div class="chat-event-body">
                                     ${inputHtml}
@@ -3369,9 +3496,11 @@ __CW_SHARED_UI_TOKENS__
                 bubble.className = "chat-bubble assistant streaming";
                 bubble.innerHTML = `
                     <div class="chat-stream-status">正在思考...</div>
+                    <div class="chat-stream-events"></div>
                     <div class="chat-stream-content"></div>
                 `;
                 const statusEl = bubble.querySelector(".chat-stream-status");
+                const eventsEl = bubble.querySelector(".chat-stream-events");
                 const contentEl = bubble.querySelector(".chat-stream-content");
                 chatMessagesEl.appendChild(bubble);
                 chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
@@ -3382,6 +3511,16 @@ __CW_SHARED_UI_TOKENS__
                     },
                     setStatus(statusText) {
                         if (statusEl) statusEl.textContent = String(statusText || "处理中...");
+                    },
+                    renderEvents(events) {
+                        if (!eventsEl) return;
+                        const list = Array.isArray(events) ? events : [];
+                        if (!list.length) {
+                            eventsEl.innerHTML = "";
+                            return;
+                        }
+                        eventsEl.innerHTML = renderAssistantStructured(list, "", false);
+                        chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
                     },
                     finalize(finalText, events) {
                         bubble.classList.remove("streaming");
@@ -3437,6 +3576,87 @@ __CW_SHARED_UI_TOKENS__
                 }
             };
 
+            const parseSseFrame = (rawFrame) => {
+                const frame = String(rawFrame || "").trim();
+                if (!frame) return null;
+                const lines = frame.split(/\r?\n/);
+                let eventName = "message";
+                const dataLines = [];
+                lines.forEach(function(line) {
+                    if (!line || line.startsWith(":")) return;
+                    if (line.startsWith("event:")) {
+                        eventName = line.slice(6).trim() || "message";
+                        return;
+                    }
+                    if (line.startsWith("data:")) {
+                        dataLines.push(line.slice(5).trimStart());
+                    }
+                });
+                return {
+                    event: eventName,
+                    data: dataLines.join("\n"),
+                };
+            };
+
+            const consumeChatSse = async (url, payload, onEvent) => {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error("HTTP " + response.status + ": " + text);
+                }
+                if (!response.body || !response.body.getReader) {
+                    throw new Error("SSE stream body is not readable");
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        buffer += decoder.decode();
+                        break;
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                    let sepIndex = buffer.indexOf("\n\n");
+                    while (sepIndex >= 0) {
+                        const rawFrame = buffer.slice(0, sepIndex);
+                        buffer = buffer.slice(sepIndex + 2);
+                        const frame = parseSseFrame(rawFrame);
+                        if (frame) {
+                            if (frame.event === "done") {
+                                return;
+                            }
+                            if (frame.data) {
+                                let payloadObj = null;
+                                try {
+                                    payloadObj = JSON.parse(frame.data);
+                                } catch (e) {
+                                    // ignore non-json frames
+                                }
+                                if (payloadObj) onEvent(payloadObj);
+                            }
+                        }
+                        sepIndex = buffer.indexOf("\n\n");
+                    }
+                }
+
+                const tail = parseSseFrame(buffer);
+                if (tail && tail.event !== "done" && tail.data) {
+                    try {
+                        const payloadObj = JSON.parse(tail.data);
+                        onEvent(payloadObj);
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+            };
+
             loadChatStore();
             renderSessionOptions();
             renderActiveMessages();
@@ -3455,7 +3675,7 @@ __CW_SHARED_UI_TOKENS__
             });
 
             const sendChat = async () => {
-                if (!apiUrl) return;
+                if (!apiUrl && !streamApiUrl) return;
                 const session = getActiveSession();
                 if (!session) return;
 
@@ -3486,21 +3706,76 @@ __CW_SHARED_UI_TOKENS__
                 };
 
                 try {
-                    const response = await fetch(apiUrl, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) {
-                        const text = await response.text();
-                        throw new Error("HTTP " + response.status + ": " + text);
+                    let answer = "No response";
+                    let responseEvents = [];
+                    const liveTraceEvents = [];
+
+                    if (streamApiUrl) {
+                        let finalResult = null;
+                        await consumeChatSse(streamApiUrl, payload, function(packet) {
+                            const packetType = String(packet && packet.type || "");
+                            if (packetType === "session") {
+                                if (packet.session_id) {
+                                    session.serverSessionId = String(packet.session_id);
+                                }
+                                return;
+                            }
+                            if (packetType === "heartbeat") {
+                                return;
+                            }
+                            if (packetType === "trace.append") {
+                                const idx = Math.max(0, Number(packet.index || 0));
+                                liveTraceEvents[idx] = packet.event || {};
+                                const visible = liveTraceEvents.filter(function(item) {
+                                    return item && item.type && item.type !== "content";
+                                });
+                                streamingBubble.renderEvents(visible);
+                                return;
+                            }
+                            if (packetType === "trace.update") {
+                                const idx = Math.max(0, Number(packet.index || 0));
+                                liveTraceEvents[idx] = packet.event || {};
+                                const visible = liveTraceEvents.filter(function(item) {
+                                    return item && item.type && item.type !== "content";
+                                });
+                                streamingBubble.renderEvents(visible);
+                                return;
+                            }
+                            if (packetType === "result") {
+                                finalResult = packet.data || {};
+                                return;
+                            }
+                            if (packetType === "error") {
+                                throw new Error(String(packet.message || "stream error"));
+                            }
+                        });
+
+                        if (!finalResult) {
+                            throw new Error("流式通道已结束，但未收到最终结果");
+                        }
+                        answer = (finalResult.output || (finalResult.messages && finalResult.messages[0] && finalResult.messages[0].content)) || "No response";
+                        responseEvents = Array.isArray(finalResult.events) ? finalResult.events : [];
+                        if (finalResult.session_id) {
+                            session.serverSessionId = String(finalResult.session_id);
+                        }
+                    } else {
+                        const response = await fetch(apiUrl, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!response.ok) {
+                            const text = await response.text();
+                            throw new Error("HTTP " + response.status + ": " + text);
+                        }
+                        const data = await response.json();
+                        answer = (data && (data.output || (data.messages && data.messages[0] && data.messages[0].content))) || "No response";
+                        responseEvents = Array.isArray(data && data.events) ? data.events : [];
+                        if (data && data.session_id) {
+                            session.serverSessionId = data.session_id;
+                        }
                     }
-                    const data = await response.json();
-                    const answer = (data && (data.output || (data.messages && data.messages[0] && data.messages[0].content))) || "No response";
-                    const responseEvents = Array.isArray(data && data.events) ? data.events : [];
-                    if (data && data.session_id) {
-                        session.serverSessionId = data.session_id;
-                    }
+
                     stopWaiting();
                     await streamTextLike(answer, (partial) => streamingBubble.update(partial));
                     streamingBubble.finalize(answer, responseEvents);

@@ -18,10 +18,11 @@ import shlex
 import shutil
 import subprocess
 import threading
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable, AsyncIterator
 
 from pydantic_ai import Agent, RunContext, Tool
 from pydantic_ai.models.fallback import FallbackModel
@@ -74,6 +75,7 @@ class _ChatSession:
     history: list[dict[str, str]] = field(default_factory=list)
     trace_events: list[dict[str, Any]] = field(default_factory=list)
     model_name: str = ""
+    event_emitter: Optional[Callable[[dict[str, Any]], None]] = None
 
 
 @dataclass
@@ -313,6 +315,15 @@ class CodeWikiChatService:
             text = str(payload)
         return _clip_text(text, max_chars)
 
+    def _emit_live_event(self, session: _ChatSession, payload: dict[str, Any]) -> None:
+        emitter = session.event_emitter
+        if not emitter:
+            return
+        try:
+            emitter(dict(payload))
+        except Exception:
+            logger.debug("Failed to emit live trace event", exc_info=True)
+
     def _push_trace_event(
         self,
         session: _ChatSession,
@@ -322,16 +333,28 @@ class CodeWikiChatService:
         collapsed: bool = True,
         **extra: Any,
     ) -> int:
+        started_at = datetime.now().isoformat()
         event = {
             "type": event_type,
             "title": title,
             "content": _clip_text(str(content or ""), 6000),
             "collapsed": collapsed,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": started_at,
+            "started_at": started_at,
+            "duration_ms": 0,
         }
         event.update(extra)
         session.trace_events.append(event)
-        return len(session.trace_events) - 1
+        index = len(session.trace_events) - 1
+        self._emit_live_event(
+            session,
+            {
+                "type": "trace.append",
+                "index": index,
+                "event": dict(event),
+            },
+        )
+        return index
 
     def trace_tool_start(self, session: _ChatSession, tool_name: str, payload: Optional[dict[str, Any]] = None) -> int:
         return self._push_trace_event(
@@ -351,9 +374,26 @@ class CodeWikiChatService:
         if 0 <= trace_id < len(session.trace_events):
             event = session.trace_events[trace_id]
             if isinstance(event, dict) and event.get("type") == "tool":
+                started_at_raw = str(event.get("started_at") or event.get("timestamp") or "")
+                duration_ms = 0
+                if started_at_raw:
+                    try:
+                        started_dt = datetime.fromisoformat(started_at_raw)
+                        duration_ms = max(0, int((datetime.now() - started_dt).total_seconds() * 1000))
+                    except Exception:
+                        duration_ms = 0
                 event["status"] = status
                 event["content"] = clipped_output
                 event["finished_at"] = datetime.now().isoformat()
+                event["duration_ms"] = duration_ms
+                self._emit_live_event(
+                    session,
+                    {
+                        "type": "trace.update",
+                        "index": trace_id,
+                        "event": dict(event),
+                    },
+                )
                 return
         self._push_trace_event(
             session=session,
@@ -363,6 +403,25 @@ class CodeWikiChatService:
             collapsed=True,
             status=status,
         )
+
+    def _normalize_chat_payload(
+        self,
+        job_id: str,
+        user_query: str,
+        session_id: str,
+        current_page: str,
+        messages: Optional[list[dict[str, str]]],
+    ) -> tuple[_ChatSession, str, Agent, str, _ChatDeps]:
+        self._cleanup_expired_sessions()
+        safe_session_id = (session_id or "").strip() or secrets.token_hex(12)
+        session = self._create_or_get_session(job_id, safe_session_id, current_page=current_page)
+        session.trace_events = []
+
+        safe_messages = list(messages or [])
+        prompt = self._format_prompt(session, safe_messages, user_query=user_query)
+        agent, model_name = self._build_agent(session)
+        deps = _ChatDeps(service=self, session=session)
+        return session, prompt, agent, model_name, deps
 
     def _build_tools(self) -> list[Tool]:
         """Build fresh tool instances for each chat agent instance."""
@@ -861,14 +920,13 @@ class CodeWikiChatService:
         current_page: str = "overview.md",
         messages: Optional[list[dict[str, str]]] = None,
     ) -> dict[str, Any]:
-        self._cleanup_expired_sessions()
-        safe_session_id = (session_id or "").strip() or secrets.token_hex(12)
-        session = self._create_or_get_session(job_id, safe_session_id, current_page=current_page)
-        session.trace_events = []
-
-        safe_messages = list(messages or [])
-        prompt = self._format_prompt(session, safe_messages, user_query=user_query)
-        agent, model_name = self._build_agent(session)
+        session, prompt, agent, model_name, deps = self._normalize_chat_payload(
+            job_id=job_id,
+            user_query=user_query,
+            session_id=session_id,
+            current_page=current_page,
+            messages=messages,
+        )
         self._push_trace_event(
             session=session,
             event_type="thinking",
@@ -889,7 +947,6 @@ class CodeWikiChatService:
             status="ready",
         )
 
-        deps = _ChatDeps(service=self, session=session)
         try:
             result = await agent.run(prompt, deps=deps)
         except Exception as exc:
@@ -933,3 +990,125 @@ class CodeWikiChatService:
             "events": trace_events,
             "timestamp": now.isoformat(),
         }
+
+    async def chat_stream(
+        self,
+        job_id: str,
+        user_query: str,
+        session_id: str = "",
+        current_page: str = "overview.md",
+        messages: Optional[list[dict[str, str]]] = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        session, prompt, agent, model_name, deps = self._normalize_chat_payload(
+            job_id=job_id,
+            user_query=user_query,
+            session_id=session_id,
+            current_page=current_page,
+            messages=messages,
+        )
+
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        done = asyncio.Event()
+
+        def emit(payload: dict[str, Any]) -> None:
+            queue.put_nowait(payload)
+
+        session.event_emitter = emit
+
+        async def _runner() -> None:
+            try:
+                self._push_trace_event(
+                    session=session,
+                    event_type="thinking",
+                    title="思考",
+                    content=f"正在分析问题，并规划检索路径（当前页面: {session.current_page}）。",
+                    collapsed=True,
+                    status="done",
+                )
+                self._push_trace_event(
+                    session=session,
+                    event_type="skill",
+                    title="已启用技能",
+                    content=(
+                        "list_docs / read_doc / list_code_files / read_code / grep_code / bash(只读)\n"
+                        f"代码作用域: {session.repo_dir.as_posix() if session.repo_dir else '(unavailable)'}"
+                    ),
+                    collapsed=True,
+                    status="ready",
+                )
+                result = await agent.run(prompt, deps=deps)
+                output = str(result.output).strip()
+                if not output:
+                    output = "No answer generated."
+                self._push_trace_event(
+                    session=session,
+                    event_type="content",
+                    title="回答",
+                    content=output,
+                    collapsed=False,
+                    status="ok",
+                )
+                now = datetime.now()
+                session.updated_at = now
+                session.model_name = model_name
+                session.history.append({"role": "user", "content": user_query})
+                session.history.append({"role": "assistant", "content": output})
+                trace_events = [dict(item) for item in session.trace_events]
+                emit(
+                    {
+                        "type": "result",
+                        "data": {
+                            "protocol": "a2ui-0.1",
+                            "session_id": session.session_id,
+                            "agent": "CodeWikiAgent",
+                            "model": model_name,
+                            "output": output,
+                            "messages": [{"role": "assistant", "content": output, "events": trace_events}],
+                            "events": trace_events,
+                            "timestamp": now.isoformat(),
+                        },
+                    }
+                )
+            except Exception as exc:
+                diagnostics = self._build_model_diagnostics(exc, model_name)
+                self._push_trace_event(
+                    session=session,
+                    event_type="content",
+                    title="执行失败",
+                    content=diagnostics,
+                    collapsed=False,
+                    status="error",
+                )
+                logger.exception("CodeWikiAgent stream run failed. %s", diagnostics)
+                emit({"type": "error", "message": diagnostics})
+            finally:
+                session.event_emitter = None
+                done.set()
+
+        runner_task = asyncio.create_task(_runner())
+        emit(
+            {
+                "type": "session",
+                "session_id": session.session_id,
+                "agent": "CodeWikiAgent",
+                "model": model_name,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
+        try:
+            while True:
+                if done.is_set() and queue.empty():
+                    break
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=0.6)
+                    yield item
+                except asyncio.TimeoutError:
+                    yield {"type": "heartbeat", "timestamp": datetime.now().isoformat()}
+        finally:
+            if not runner_task.done():
+                runner_task.cancel()
+                try:
+                    await runner_task
+                except asyncio.CancelledError:
+                    pass

@@ -6,6 +6,7 @@ FastAPI route handlers for the CodeWiki web application.
 from datetime import datetime, timedelta
 from pathlib import Path
 from dataclasses import asdict
+import json
 import re
 import threading
 import secrets
@@ -15,7 +16,7 @@ from traceback import format_exc
 
 from fastapi import Form, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 
 from .models import JobStatus, JobStatusResponse, GenerationOptions, DocChatRequest
 from .github_processor import GitHubRepoProcessor
@@ -403,6 +404,7 @@ class WebRoutes:
                 "current_view_job_id": variant_options.get("current_view_job_id", job_id),
                 "current_doc_type": current_doc_type,
                 "chat_api_url": f"/api/docs/{job_id}/chat",
+                "chat_stream_api_url": f"/api/docs/{job_id}/chat/stream",
                 "chat_protocol": "a2ui-0.1",
                 "content_frame_url": content_frame_url,
                 "content_nav_base": f"/static-docs-content/{job_id}",
@@ -414,8 +416,8 @@ class WebRoutes:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error reading {filename}: {e}\n{format_exc()}")
 
-    async def docs_chat(self, job_id: str, payload: DocChatRequest) -> JSONResponse:
-        """Doc page chat endpoint backed by CodeWikiAgent."""
+    def _extract_chat_message_payload(self, payload: DocChatRequest) -> tuple[str, list[dict[str, str]]]:
+        """Normalize incoming chat payload for JSON/SSE endpoints."""
         message_text = (payload.message or "").strip()
         message_items: list[dict[str, str]] = []
         if payload.messages:
@@ -438,6 +440,11 @@ class WebRoutes:
 
         if not message_text:
             raise HTTPException(status_code=400, detail="message is required")
+        return message_text, message_items
+
+    async def docs_chat(self, job_id: str, payload: DocChatRequest) -> JSONResponse:
+        """Doc page chat endpoint backed by CodeWikiAgent."""
+        message_text, message_items = self._extract_chat_message_payload(payload)
 
         try:
             response = await self._get_chat_service().chat(
@@ -454,6 +461,39 @@ class WebRoutes:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
         return JSONResponse(content=response)
+
+    async def docs_chat_stream(self, job_id: str, payload: DocChatRequest) -> StreamingResponse:
+        """Doc page chat endpoint using SSE streaming events."""
+        message_text, message_items = self._extract_chat_message_payload(payload)
+
+        async def _sse_iter():
+            try:
+                async for event in self._get_chat_service().chat_stream(
+                    job_id=job_id,
+                    user_query=message_text,
+                    session_id=(payload.session_id or "").strip(),
+                    current_page=(payload.current_page or "overview.md").strip(),
+                    messages=message_items,
+                ):
+                    yield f"event: message\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except FileNotFoundError as e:
+                err = {"type": "error", "message": str(e)}
+                yield f"event: message\ndata: {json.dumps(err, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                err = {"type": "error", "message": f"Chat stream failed: {e}"}
+                yield f"event: message\ndata: {json.dumps(err, ensure_ascii=False)}\n\n"
+            finally:
+                yield "event: done\ndata: [DONE]\n\n"
+
+        return StreamingResponse(
+            _sse_iter(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
     
     def _normalize_github_url(self, url: str) -> str:
         """Normalize Git repository URL for consistent comparison."""

@@ -325,6 +325,12 @@ async def docs_chat(job_id: str, payload: DocChatRequest = Body(...)):
     return await web_routes.docs_chat(job_id, payload)
 
 
+@app.post("/api/docs/{job_id}/chat/stream")
+async def docs_chat_stream(job_id: str, payload: DocChatRequest = Body(...)):
+    """A2UI-style doc chat SSE endpoint for realtime streaming."""
+    return await web_routes.docs_chat_stream(job_id, payload)
+
+
 def main():
     """Main function to run the web application."""
     import uvicorn
