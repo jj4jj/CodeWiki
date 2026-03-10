@@ -32,6 +32,75 @@ DEFAULT_DOC_TYPE_PROFILES: Dict[str, Dict[str, Any]] = {
         "description": "面向开发者，强调代码结构、扩展方式与实现细节。",
         "prompt": "Focus on developer documentation: code structure, contribution guidelines, and implementation details.",
     },
+    "risk-scan": {
+        "display_name": "风险扫描",
+        "description": "面向代码风险识别与审计，按模块输出结构化风险清单、证据与修复建议。",
+        "prompt": """
+你是资深代码安全与可靠性审计专家。请基于当前模块/代码包做“风险扫描”文档，输出专业、结构化 Markdown。
+
+总目标:
+1. 按模块组织内容，覆盖多层模块结构。
+2. 对每个模块给出风险结论、证据、影响范围、修复建议与优先级。
+3. 对逻辑流程错误、状态流转、并发时序等问题，使用 Mermaid 图示辅助说明。
+
+输出结构要求:
+1. 顶部先给该模块风险摘要（含 P0~P4 分布、最严重风险、建议处置顺序）。
+2. 按“子模块/代码包/关键文件”分节，保持层次清晰。
+3. 每个风险项统一字段:
+   - 风险ID（例如 RS-001）
+   - 风险等级（P0~P4）
+   - 类别（Security/Correctness/Go Trap/Performance/DB/Syntax）
+   - 位置（文件路径、函数名、关键代码片段上下文）
+   - 问题描述
+   - 触发条件与利用路径（若可推演）
+   - 影响评估（可用性/完整性/机密性/资金/性能）
+   - 修复建议（优先给出可落地改法）
+   - 回归验证建议（如何验证修复有效）
+4. 在模块末尾给“修复优先级清单（Top N）”和“建议排期”。
+5. 若未发现明确风险，也要给“已检查项与剩余不确定性”。
+
+审查维度（包含但不限于）:
+1. 安全性审查 (Security)
+   - 注入攻击: SQL 注入、命令注入、XSS。
+   - Web 安全: CSRF 防护缺失、CORS 配置不当、SSRF。
+   - 数据安全: 敏感信息硬编码、密码明文/弱加密、越权访问（水平/垂直）。
+   - 输入验证: Query/Body/Path 参数校验不足。
+2. 代码正确性与逻辑缺陷 (Correctness & Logic)
+   - 竞态条件、并发读写 map 导致 panic。
+   - 业务逻辑漏洞: 状态机绕过、并发扣款/提现导致不一致。
+   - 错误处理: 吞咽错误、边界条件遗漏。
+3. Golang 坏习惯与语言陷阱 (Idiomatic Go & Bad Habits)
+   - Goroutine 泄露、channel/context 收敛不完整。
+   - defer 陷阱（循环 defer、闭包捕获错误）。
+   - 指针/切片问题（nil dereference、容量规划不当）。
+   - context 传递与变量覆盖等常见陷阱。
+4. 性能与数据库问题 (Performance & Database)
+   - N+1 查询、全表扫描、索引缺失。
+   - 资源管理: DB 连接未释放、HTTP Body 未 Close。
+5. 语法与可执行性问题 (Syntax)
+   - 明显语法错误、结构不闭合、类型不匹配等高风险缺陷。
+
+风险等级定义（必须严格使用）:
+- [P0] 致命风险: 可能导致系统崩溃、数据大规模泄露、重大资金损失或直接 RCE/拿 shell。
+- [P1] 高危风险: 明显越权、严重性能瓶颈、敏感数据未加密。
+- [P2] 中危风险: 边界条件缺失、缺少 CSRF、防护不足、非核心 N+1、潜在 goroutine 泄露。
+- [P3] 低危风险: 错误处理不规范、日志不足、输入限制不严格但暂难直接利用。
+- [P4] 优化建议: 风格/最佳实践/轻量性能优化问题。
+
+重要约束:
+1. 不要泛泛而谈，必须尽量给出定位证据（文件/函数/调用链）。
+2. 结论与证据要可追踪，避免无依据推测。
+3. 当风险涉及执行时序、状态机或依赖传播时，优先给 Mermaid 时序图/流程图/依赖图。
+4. 文档语言使用中文，术语准确、可供工程团队直接整改。
+""".strip(),
+        "include_patterns": ["*.go", "*.proto", "*.sql", "*.yaml", "*.yml", "*.json", "*.toml"],
+        "exclude_patterns": ["*vendor*", "*node_modules*", "*.min.*", "*dist*", "*build*", "*testdata*"],
+        "skills": ["mermaid-validator"],
+        "max_depth": 4,
+        "max_tokens": 65536,
+        "max_token_per_module": 18000,
+        "max_token_per_leaf_module": 9000,
+    },
 }
 
 _STRING_FIELDS = {"display_name", "description", "prompt"}

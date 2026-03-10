@@ -1841,6 +1841,8 @@ class WebRoutes:
             return "💻"
         if key in {"api"}:
             return "🔌"
+        if key in {"risk-scan", "risk", "security", "audit"}:
+            return "🛡"
         if key in {"overview", "summary"}:
             return "📘"
         if key in {"ops", "operation", "runbook"}:
