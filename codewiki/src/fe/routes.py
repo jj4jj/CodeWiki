@@ -405,6 +405,7 @@ class WebRoutes:
                 "current_doc_type": current_doc_type,
                 "chat_api_url": f"/api/docs/{job_id}/chat",
                 "chat_stream_api_url": f"/api/docs/{job_id}/chat/stream",
+                "chat_session_api_base": f"/api/docs/{job_id}/chat/session",
                 "chat_protocol": "a2ui-0.1",
                 "content_frame_url": content_frame_url,
                 "content_nav_base": f"/static-docs-content/{job_id}",
@@ -494,6 +495,19 @@ class WebRoutes:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    async def docs_chat_session_state(self, job_id: str, session_id: str) -> JSONResponse:
+        """Fetch server-side chat session snapshot for browser resume."""
+        safe_session_id = (session_id or "").strip()
+        if not safe_session_id:
+            raise HTTPException(status_code=400, detail="session_id is required")
+        try:
+            payload = self._get_chat_service().get_session_state(job_id=job_id, session_id=safe_session_id)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat session query failed: {e}")
+        return JSONResponse(content=payload)
     
     def _normalize_github_url(self, url: str) -> str:
         """Normalize Git repository URL for consistent comparison."""

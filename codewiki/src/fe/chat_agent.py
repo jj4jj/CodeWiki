@@ -2,8 +2,10 @@
 """
 Doc page chat agent service.
 
-Provides a pydantic-ai powered CodeWikiAgent with read-only code/doc access
-and a bash tool executed in a constrained session workspace.
+Provides a pydantic-ai powered CodeWikiAgent with:
+1) Read-only code access
+2) Writable documentation access for markdown files
+3) A bash tool executed in a constrained session workspace
 """
 
 from __future__ import annotations
@@ -72,10 +74,13 @@ class _ChatSession:
     repo_dir: Optional[Path] = None
     subproject_path: str = ""
     temp_user: str = ""
-    history: list[dict[str, str]] = field(default_factory=list)
+    history: list[dict[str, Any]] = field(default_factory=list)
     trace_events: list[dict[str, Any]] = field(default_factory=list)
     model_name: str = ""
     event_emitter: Optional[Callable[[dict[str, Any]], None]] = None
+    is_running: bool = False
+    run_started_at: str = ""
+    run_finished_at: str = ""
 
 
 @dataclass
@@ -135,6 +140,56 @@ async def _read_doc_tool(ctx: RunContext[_ChatDeps], relative_path: str) -> str:
             ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, result, ok=True)
             return result
         result = _clip_text(file_manager.load_text(target), WebAppConfig.CHAT_MAX_TOOL_OUTPUT_CHARS)
+        ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, result, ok=True)
+        return result
+    except Exception as exc:
+        ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, f"Tool failed: {exc}", ok=False)
+        raise
+
+
+async def _write_doc_tool(
+    ctx: RunContext[_ChatDeps],
+    relative_path: str,
+    content: str,
+    mode: str = "overwrite",
+) -> str:
+    trace_id = ctx.deps.service.trace_tool_start(
+        ctx.deps.session,
+        "write_doc",
+        {
+            "relative_path": relative_path,
+            "mode": mode,
+            "content_chars": len(content or ""),
+        },
+    )
+    docs_root = ctx.deps.session.docs_dir
+    try:
+        normalized_mode = (mode or "overwrite").strip().lower()
+        if normalized_mode not in {"overwrite", "append"}:
+            result = "Unsupported mode, expected overwrite|append."
+            ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, result, ok=True)
+            return result
+
+        target = _resolve_under(docs_root, relative_path)
+        if target.suffix.lower() not in {".md", ".markdown"}:
+            result = "Only markdown files can be modified (.md/.markdown)."
+            ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, result, ok=True)
+            return result
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        text = str(content or "")
+        if normalized_mode == "append":
+            with target.open("a", encoding="utf-8") as fp:
+                fp.write(text)
+        else:
+            file_manager.save_text(target, text)
+
+        rel = target.relative_to(docs_root).as_posix()
+        result = (
+            f"Updated document: {rel}\n"
+            f"mode={normalized_mode}\n"
+            f"chars={len(text)}"
+        )
         ctx.deps.service.trace_tool_end(ctx.deps.session, trace_id, result, ok=True)
         return result
     except Exception as exc:
@@ -315,6 +370,23 @@ class CodeWikiChatService:
             text = str(payload)
         return _clip_text(text, max_chars)
 
+    def _append_history_message(
+        self,
+        session: _ChatSession,
+        role: str,
+        content: str,
+        *,
+        events: Optional[list[dict[str, Any]]] = None,
+    ) -> None:
+        item: dict[str, Any] = {
+            "role": (role or "").strip().lower() or "assistant",
+            "content": str(content or ""),
+            "timestamp": datetime.now().isoformat(),
+        }
+        if events is not None:
+            item["events"] = [dict(event) for event in events if isinstance(event, dict)]
+        session.history.append(item)
+
     def _emit_live_event(self, session: _ChatSession, payload: dict[str, Any]) -> None:
         emitter = session.event_emitter
         if not emitter:
@@ -345,6 +417,7 @@ class CodeWikiChatService:
         }
         event.update(extra)
         session.trace_events.append(event)
+        session.updated_at = datetime.now()
         index = len(session.trace_events) - 1
         self._emit_live_event(
             session,
@@ -415,7 +488,6 @@ class CodeWikiChatService:
         self._cleanup_expired_sessions()
         safe_session_id = (session_id or "").strip() or secrets.token_hex(12)
         session = self._create_or_get_session(job_id, safe_session_id, current_page=current_page)
-        session.trace_events = []
 
         safe_messages = list(messages or [])
         prompt = self._format_prompt(session, safe_messages, user_query=user_query)
@@ -436,6 +508,15 @@ class CodeWikiChatService:
                 function=_read_doc_tool,
                 name="read_doc",
                 description="Read one generated documentation file by relative path.",
+                takes_ctx=True,
+            ),
+            Tool(
+                function=_write_doc_tool,
+                name="write_doc",
+                description=(
+                    "Write markdown file under docs directory. "
+                    "Supports mode=overwrite|append, docs only."
+                ),
                 takes_ctx=True,
             ),
             Tool(
@@ -461,7 +542,7 @@ class CodeWikiChatService:
                 name="bash",
                 description=(
                     "Execute linux shell command in chat workspace. "
-                    "Only inspect current docs/code folders; no modifications allowed."
+                    "Read-only for code repository; avoid destructive operations."
                 ),
                 takes_ctx=True,
             ),
@@ -793,8 +874,9 @@ class CodeWikiChatService:
             f"- 本文档对应代码目录(可访问范围): {repo_dir}\n"
             f"- 该代码目录在仓库中的子目录路径: {subproject}\n"
             f"- 命令工作目录: {workspace_dir}\n"
-            "- 严禁修改任何代码/文档/权限/仓库历史。\n"
-            "- 若用户要求修改，请明确拒绝并说明当前会话为只读分析模式。"
+            "- 允许修改文档目录中的 Markdown 文件（.md/.markdown），优先使用 write_doc 工具。\n"
+            "- 严禁修改代码目录、仓库历史、系统权限与非文档目录文件。\n"
+            "- 若用户要求修改代码，请明确拒绝并说明仅允许更新文档目录。"
         )
         return (
             Agent(
@@ -927,6 +1009,15 @@ class CodeWikiChatService:
             current_page=current_page,
             messages=messages,
         )
+        if session.is_running:
+            raise RuntimeError("当前会话仍在处理中，请等待完成后再发送新问题。")
+        session.trace_events = []
+        session.is_running = True
+        session.updated_at = datetime.now()
+        session.run_started_at = session.updated_at.isoformat()
+        session.run_finished_at = ""
+        self._append_history_message(session, "user", user_query)
+
         self._push_trace_event(
             session=session,
             event_type="thinking",
@@ -940,7 +1031,8 @@ class CodeWikiChatService:
             event_type="skill",
             title="已启用技能",
             content=(
-                "list_docs / read_doc / list_code_files / read_code / grep_code / bash(只读)\n"
+                "list_docs / read_doc / write_doc / list_code_files / read_code / grep_code / bash\n"
+                f"文档目录(可写 .md): {session.docs_dir.as_posix()}\n"
                 f"代码作用域: {session.repo_dir.as_posix() if session.repo_dir else '(unavailable)'}"
             ),
             collapsed=True,
@@ -959,6 +1051,11 @@ class CodeWikiChatService:
                 collapsed=False,
                 status="error",
             )
+            trace_events = [dict(item) for item in session.trace_events]
+            self._append_history_message(session, "assistant", diagnostics, events=trace_events)
+            session.updated_at = datetime.now()
+            session.is_running = False
+            session.run_finished_at = session.updated_at.isoformat()
             logger.exception("CodeWikiAgent run failed. %s", diagnostics)
             raise RuntimeError(diagnostics) from exc
         output = str(result.output).strip()
@@ -976,9 +1073,10 @@ class CodeWikiChatService:
         now = datetime.now()
         session.updated_at = now
         session.model_name = model_name
-        session.history.append({"role": "user", "content": user_query})
-        session.history.append({"role": "assistant", "content": output})
+        session.is_running = False
+        session.run_finished_at = now.isoformat()
         trace_events = [dict(item) for item in session.trace_events]
+        self._append_history_message(session, "assistant", output, events=trace_events)
 
         return {
             "protocol": "a2ui-0.1",
@@ -1006,6 +1104,14 @@ class CodeWikiChatService:
             current_page=current_page,
             messages=messages,
         )
+        if session.is_running:
+            raise RuntimeError("当前会话仍在处理中，请等待完成后再发送新问题。")
+        session.trace_events = []
+        session.is_running = True
+        session.updated_at = datetime.now()
+        session.run_started_at = session.updated_at.isoformat()
+        session.run_finished_at = ""
+        self._append_history_message(session, "user", user_query)
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         done = asyncio.Event()
@@ -1030,7 +1136,8 @@ class CodeWikiChatService:
                     event_type="skill",
                     title="已启用技能",
                     content=(
-                        "list_docs / read_doc / list_code_files / read_code / grep_code / bash(只读)\n"
+                        "list_docs / read_doc / write_doc / list_code_files / read_code / grep_code / bash\n"
+                        f"文档目录(可写 .md): {session.docs_dir.as_posix()}\n"
                         f"代码作用域: {session.repo_dir.as_posix() if session.repo_dir else '(unavailable)'}"
                     ),
                     collapsed=True,
@@ -1051,9 +1158,10 @@ class CodeWikiChatService:
                 now = datetime.now()
                 session.updated_at = now
                 session.model_name = model_name
-                session.history.append({"role": "user", "content": user_query})
-                session.history.append({"role": "assistant", "content": output})
+                session.is_running = False
+                session.run_finished_at = now.isoformat()
                 trace_events = [dict(item) for item in session.trace_events]
+                self._append_history_message(session, "assistant", output, events=trace_events)
                 emit(
                     {
                         "type": "result",
@@ -1079,6 +1187,11 @@ class CodeWikiChatService:
                     collapsed=False,
                     status="error",
                 )
+                trace_events = [dict(item) for item in session.trace_events]
+                self._append_history_message(session, "assistant", diagnostics, events=trace_events)
+                session.updated_at = datetime.now()
+                session.is_running = False
+                session.run_finished_at = session.updated_at.isoformat()
                 logger.exception("CodeWikiAgent stream run failed. %s", diagnostics)
                 emit({"type": "error", "message": diagnostics})
             finally:
@@ -1106,9 +1219,39 @@ class CodeWikiChatService:
                 except asyncio.TimeoutError:
                     yield {"type": "heartbeat", "timestamp": datetime.now().isoformat()}
         finally:
-            if not runner_task.done():
-                runner_task.cancel()
+            # Keep background run alive even if client disconnects.
+            # This allows the browser to reconnect and fetch completed session output.
+            if done.is_set() and not runner_task.done():
                 try:
                     await runner_task
                 except asyncio.CancelledError:
                     pass
+
+    def get_session_state(self, job_id: str, session_id: str) -> dict[str, Any]:
+        """Fetch server-side session snapshot for browser resume/recovery."""
+        self._cleanup_expired_sessions()
+        safe_session_id = (session_id or "").strip()
+        if not safe_session_id:
+            raise FileNotFoundError("session_id is required")
+
+        with self._lock:
+            session = self._sessions.get(safe_session_id)
+            if not session or session.job_id != job_id:
+                raise FileNotFoundError(f"Chat session not found: {safe_session_id}")
+            history = [dict(item) for item in session.history[-80:]]
+            events = [dict(item) for item in session.trace_events]
+            snapshot = {
+                "protocol": "a2ui-0.1",
+                "session_id": session.session_id,
+                "job_id": session.job_id,
+                "agent": "CodeWikiAgent",
+                "model": session.model_name,
+                "status": "running" if session.is_running else "idle",
+                "run_started_at": session.run_started_at,
+                "run_finished_at": session.run_finished_at,
+                "updated_at": session.updated_at.isoformat(),
+                "current_page": session.current_page,
+                "messages": history,
+                "events": events,
+            }
+        return snapshot

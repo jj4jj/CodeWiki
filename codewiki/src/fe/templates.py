@@ -2530,6 +2530,7 @@ __CW_SHARED_UI_TOKENS__
             class="chat-panel"
             data-chat-api="{{ chat_api_url }}"
             data-chat-stream-api="{{ chat_stream_api_url or '' }}"
+            data-chat-session-api-base="{{ chat_session_api_base or '' }}"
             data-chat-protocol="{{ chat_protocol }}"
         >
             <div class="chat-header">
@@ -2553,7 +2554,7 @@ __CW_SHARED_UI_TOKENS__
                     </div>
                 </div>
                 <div class="chat-subtitle">
-                    仅可读取文档与代码目录，禁止修改代码。会话会保存在本地浏览器并自动恢复。
+                    可读取文档与代码目录；仅允许修改文档目录的 Markdown 文件，禁止修改代码。会话关闭后服务器仍会继续执行并可恢复。
                 </div>
             </div>
             <div id="chatMessages" class="chat-messages"></div>
@@ -3105,8 +3106,10 @@ __CW_SHARED_UI_TOKENS__
             const greetingText = "你好，我是 CodeWikiAgent。你可以问我当前模块实现、调用链、关键函数逻辑。";
             const apiUrl = chatPanel.getAttribute("data-chat-api") || "";
             const streamApiUrl = chatPanel.getAttribute("data-chat-stream-api") || "";
+            const sessionApiBase = chatPanel.getAttribute("data-chat-session-api-base") || "";
             const protocol = chatPanel.getAttribute("data-chat-protocol") || "a2ui-0.1";
             let chatStore = { activeSessionId: "", sessions: [] };
+            let chatSessionPollTimer = null;
 
             const setDrawerState = (isOpen) => {
                 document.body.classList.toggle("chat-open", Boolean(isOpen));
@@ -3177,6 +3180,8 @@ __CW_SHARED_UI_TOKENS__
                 return {
                     id: id,
                     serverSessionId: "",
+                    serverRunning: false,
+                    serverUpdatedAt: "",
                     createdAt: createdAt,
                     updatedAt: createdAt,
                     title: buildSessionTitle(createdAt, ""),
@@ -3197,6 +3202,16 @@ __CW_SHARED_UI_TOKENS__
                 if (!chatStore.activeSessionId || !chatStore.sessions.find(function(item) { return item.id === chatStore.activeSessionId; })) {
                     chatStore.activeSessionId = chatStore.sessions[0].id;
                 }
+                chatStore.sessions = chatStore.sessions.map(function(item) {
+                    const session = item && typeof item === "object" ? item : createSession();
+                    if (!Array.isArray(session.messages)) {
+                        session.messages = [{ role: "assistant", content: greetingText }];
+                    }
+                    if (typeof session.serverSessionId !== "string") session.serverSessionId = "";
+                    session.serverRunning = Boolean(session.serverRunning);
+                    if (typeof session.serverUpdatedAt !== "string") session.serverUpdatedAt = "";
+                    return session;
+                });
             };
 
             const loadChatStore = () => {
@@ -3217,6 +3232,12 @@ __CW_SHARED_UI_TOKENS__
 
             const getActiveSession = () => {
                 return chatStore.sessions.find(function(item) { return item.id === chatStore.activeSessionId; }) || null;
+            };
+
+            const getSessionApiUrl = (serverSessionId) => {
+                const safe = String(serverSessionId || "").trim();
+                if (!safe || !sessionApiBase) return "";
+                return sessionApiBase + "/" + encodeURIComponent(safe);
             };
 
             const escapeHtml = (value) => {
@@ -3461,6 +3482,7 @@ __CW_SHARED_UI_TOKENS__
                 renderSessionOptions();
                 renderActiveMessages();
                 persistChatStore();
+                syncOneSessionFromServer(target, { render: true }).finally(refreshChatSessionPolling);
             };
 
             const appendMessage = (role, text) => {
@@ -3480,7 +3502,8 @@ __CW_SHARED_UI_TOKENS__
                 persistChatStore();
             };
 
-            const commitAssistantMessage = (text, events) => {
+            const commitAssistantMessage = (text, events, opts = {}) => {
+                const options = opts || {};
                 const session = getActiveSession();
                 if (!session) return;
                 if (!Array.isArray(session.messages)) {
@@ -3491,8 +3514,117 @@ __CW_SHARED_UI_TOKENS__
                     content: text || "",
                     events: Array.isArray(events) ? events : []
                 });
+                if (!options.keepRunning) {
+                    session.serverRunning = false;
+                }
                 session.updatedAt = nowText();
                 persistChatStore();
+            };
+
+            const normalizeServerMessages = (messages) => {
+                if (!Array.isArray(messages)) return [];
+                return messages
+                    .filter(function(item) { return item && typeof item === "object"; })
+                    .map(function(item) {
+                        return {
+                            role: String(item.role || "assistant").toLowerCase() === "user" ? "user" : "assistant",
+                            content: String(item.content || ""),
+                            events: Array.isArray(item.events) ? item.events : [],
+                        };
+                    });
+            };
+
+            const mergeSessionMessagesFromServer = (session, messages) => {
+                if (!session) return false;
+                const incoming = normalizeServerMessages(messages);
+                if (!incoming.length) return false;
+
+                const local = Array.isArray(session.messages) ? session.messages : [];
+                const signature = (msg) => `${msg.role || ""}::${msg.content || ""}`;
+                const localSig = local.map(signature).join("|");
+                const incomingSig = incoming.map(signature).join("|");
+                if (localSig === incomingSig) return false;
+
+                // Prefer server history as source-of-truth when it has new content.
+                const shouldReplace = incoming.length >= local.length || !local.length;
+                if (shouldReplace) {
+                    session.messages = incoming;
+                    session.updatedAt = nowText();
+                    return true;
+                }
+                return false;
+            };
+
+            const syncOneSessionFromServer = async (session, opts = {}) => {
+                const options = opts || {};
+                if (!session || !session.serverSessionId) return false;
+                const url = getSessionApiUrl(session.serverSessionId);
+                if (!url) return false;
+                try {
+                    const response = await fetch(url, { method: "GET" });
+                    if (!response.ok) {
+                        if (response.status === 404) return false;
+                        throw new Error("HTTP " + response.status);
+                    }
+                    const data = await response.json();
+                    if (!data || typeof data !== "object") return false;
+
+                    let changed = false;
+                    if (typeof data.session_id === "string" && data.session_id && session.serverSessionId !== data.session_id) {
+                        session.serverSessionId = data.session_id;
+                        changed = true;
+                    }
+                    const running = String(data.status || "").toLowerCase() === "running";
+                    if (Boolean(session.serverRunning) !== running) {
+                        session.serverRunning = running;
+                        changed = true;
+                    }
+                    if (typeof data.updated_at === "string" && data.updated_at !== session.serverUpdatedAt) {
+                        session.serverUpdatedAt = data.updated_at;
+                        changed = true;
+                    }
+                    if (mergeSessionMessagesFromServer(session, data.messages)) {
+                        changed = true;
+                    }
+                    if (changed) {
+                        persistChatStore();
+                        if (options.render !== false && session.id === chatStore.activeSessionId) {
+                            renderActiveMessages();
+                            renderSessionOptions();
+                        }
+                    }
+                    return changed;
+                } catch (error) {
+                    console.warn("Failed to sync chat session from server", error);
+                    return false;
+                }
+            };
+
+            const syncAllSessionsFromServer = async (opts = {}) => {
+                const sessions = Array.isArray(chatStore.sessions) ? chatStore.sessions : [];
+                for (const session of sessions) {
+                    if (!session || !session.serverSessionId) continue;
+                    await syncOneSessionFromServer(session, opts);
+                }
+            };
+
+            const refreshChatSessionPolling = () => {
+                if (chatSessionPollTimer) {
+                    window.clearInterval(chatSessionPollTimer);
+                    chatSessionPollTimer = null;
+                }
+                const active = getActiveSession();
+                if (!active || !active.serverSessionId) return;
+                chatSessionPollTimer = window.setInterval(async function() {
+                    const current = getActiveSession();
+                    if (!current || !current.serverSessionId) return;
+                    const changed = await syncOneSessionFromServer(current, { render: true });
+                    if (!current.serverRunning && !changed) {
+                        // Slow down by stopping when idle and no incremental updates.
+                        window.clearInterval(chatSessionPollTimer);
+                        chatSessionPollTimer = null;
+                    }
+                }, active.serverRunning ? 1800 : 3500);
             };
 
             const createStreamingAssistantBubble = () => {
@@ -3664,6 +3796,7 @@ __CW_SHARED_UI_TOKENS__
             loadChatStore();
             renderSessionOptions();
             renderActiveMessages();
+            syncAllSessionsFromServer({ render: true }).finally(refreshChatSessionPolling);
 
             chatSessionSelectEl.addEventListener("change", function() {
                 activateSession(chatSessionSelectEl.value || "");
@@ -3676,6 +3809,7 @@ __CW_SHARED_UI_TOKENS__
                 renderSessionOptions();
                 renderActiveMessages();
                 persistChatStore();
+                refreshChatSessionPolling();
             });
 
             const sendChat = async () => {
@@ -3688,6 +3822,8 @@ __CW_SHARED_UI_TOKENS__
 
                 appendMessage("user", question);
                 chatInputEl.value = "";
+                session.serverRunning = true;
+                persistChatStore();
                 chatSendBtn.disabled = true;
                 chatSessionSelectEl.disabled = true;
                 chatNewSessionBtn.disabled = true;
@@ -3722,6 +3858,7 @@ __CW_SHARED_UI_TOKENS__
                                 if (packet.session_id) {
                                     session.serverSessionId = String(packet.session_id);
                                 }
+                                session.serverRunning = true;
                                 return;
                             }
                             if (packetType === "heartbeat") {
@@ -3747,9 +3884,11 @@ __CW_SHARED_UI_TOKENS__
                             }
                             if (packetType === "result") {
                                 finalResult = packet.data || {};
+                                session.serverRunning = false;
                                 return;
                             }
                             if (packetType === "error") {
+                                session.serverRunning = false;
                                 throw new Error(String(packet.message || "stream error"));
                             }
                         });
@@ -3762,6 +3901,7 @@ __CW_SHARED_UI_TOKENS__
                         if (finalResult.session_id) {
                             session.serverSessionId = String(finalResult.session_id);
                         }
+                        session.serverRunning = false;
                     } else {
                         const response = await fetch(apiUrl, {
                             method: "POST",
@@ -3778,6 +3918,7 @@ __CW_SHARED_UI_TOKENS__
                         if (data && data.session_id) {
                             session.serverSessionId = data.session_id;
                         }
+                        session.serverRunning = false;
                     }
 
                     stopWaiting();
@@ -3788,6 +3929,8 @@ __CW_SHARED_UI_TOKENS__
                 } catch (error) {
                     stopWaiting();
                     const message = "请求失败: " + (error && error.message ? error.message : String(error));
+                    const busy = message.includes("仍在处理中") || message.toLowerCase().includes("busy");
+                    session.serverRunning = busy;
                     streamingBubble.fail(message);
                     commitAssistantMessage(message, [{
                         type: "content",
@@ -3795,11 +3938,12 @@ __CW_SHARED_UI_TOKENS__
                         content: message,
                         collapsed: false,
                         status: "error"
-                    }]);
+                    }], { keepRunning: busy });
                 } finally {
                     chatSendBtn.disabled = false;
                     chatSessionSelectEl.disabled = false;
                     chatNewSessionBtn.disabled = false;
+                    refreshChatSessionPolling();
                 }
             };
 

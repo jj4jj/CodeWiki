@@ -331,6 +331,12 @@ async def docs_chat_stream(job_id: str, payload: DocChatRequest = Body(...)):
     return await web_routes.docs_chat_stream(job_id, payload)
 
 
+@app.get("/api/docs/{job_id}/chat/session/{session_id}")
+async def docs_chat_session_state(job_id: str, session_id: str):
+    """Fetch server-side chat session snapshot for session resume."""
+    return await web_routes.docs_chat_session_state(job_id, session_id)
+
+
 def main():
     """Main function to run the web application."""
     import uvicorn
